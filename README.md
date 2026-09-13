@@ -1,1588 +1,289 @@
-#include <winsock2.h>
-#include <windows.h>
-#include <iostream>
-#include <vector>
-#include <memory>
-#include <cmath>
-
-#include "core/Math.hpp"
-#include "core/Window.hpp"
-#include "core/Timer.hpp"
-#include "core/Audio.hpp"
-#include "core/Camera.hpp"
-#include "core/Settings.hpp"
-
-#include "render/GLHeaders.hpp"
-#include "render/GLContext.hpp"
-#include "render/GLPipeline.hpp"
-#include "render/GLBuffer.hpp"
-#include "render/TextureAtlas.hpp"
-
-#include "world/BlockRegistry.hpp"
-#include "world/BiomeRegistry.hpp"
-#include "world/World.hpp"
-
-#include "building/StructurePiece.hpp"
-#include "building/BuildingManager.hpp"
-
-#include "entities/Player.hpp"
-#include "entities/Creature.hpp"
-#include "entities/CreatureRegistry.hpp"
-#include "entities/ItemEntity.hpp"
-#include "entities/CaptureSphere.hpp"
-#include "entities/MobSpawner.hpp"
-#include "inventory/ItemRegistry.hpp"
-#include "inventory/CraftingRegistry.hpp"
-
-#include "ui/UIRenderer.hpp"
-#include "ui/HUD.hpp"
-#include "ui/InventoryUI.hpp"
-#include "ui/BuildMenuUI.hpp"
-#include "ui/BlockCatalogUI.hpp"
-#include "ui/BestiaryUI.hpp"
-#include "ui/BiomeCodexUI.hpp"
-#include "ui/SettingsUI.hpp"
-#include "render/IrisShaderManager.hpp"
-#include "ui/IrisShaderUI.hpp"
-#include "ui/UpdateCalendarUI.hpp"
-#include "ui/MainMenuUI.hpp"
-#include "ui/MultiplayerUI.hpp"
-#include "ui/LoginUI.hpp"
-#include "ui/ChatUI.hpp"
-#include "ui/SkillTreeUI.hpp"
-#include "inventory/ChestManager.hpp"
-#include "network/NetworkProtocol.hpp"
-#include "network/Client.hpp"
-#include "network/Server.hpp"
-#include "entities/RemotePlayer.hpp"
-
-using namespace Aetheria;
-
-int main(int argc, char* argv[]) {
-    std::cout << "========================================================\n"
-              << "       CHRONICLES OF AETHERIA (OpenGL RPG Sandbox)      \n"
-              << "  Featuring: 365 Blocks | 35 Biomes | Palworld Building  \n"
-              << "         Interactive Settings Menu & Full Customization  \n"
-              << "========================================================\n"
-              << std::endl;
-
-    // 1. Initialize Registries & Settings
-    BlockRegistry::init();
-    BiomeRegistry::init();
-    CreatureRegistry::init();
-    StructureRegistry::init();
-    ItemRegistry::init();
-    CraftingRegistry::init();
-
-    Settings& config = Settings::instance();
-    config.load();
-
-    // 2. Initialize Platform Window & Audio
-    auto window = std::make_unique<Window>("Chronicles of Aetheria (OpenGL 3.3 3D RPG)", 1280, 720);
-    auto audio = std::make_unique<AudioEngine>();
-    Timer timer;
-    Camera camera;
-
-    // 3. Initialize Modern OpenGL Context & Pipelines
-    auto glContext = std::make_unique<GLContext>(window.get());
-    if (!glContext->isInitialized()) {
-        std::cerr << "CRITICAL: OpenGL context creation failed!" << std::endl;
-        MessageBoxA(window->getHandle(), "Failed to initialize OpenGL! Please check your GPU drivers.", "OpenGL Error", MB_ICONERROR);
-        return 1;
-    }
-
-    auto glPipeline = std::make_unique<GLPipeline>();
-    if (!glPipeline->init()) {
-        std::cerr << "CRITICAL: Failed to compile OpenGL GLSL shaders!" << std::endl;
-        MessageBoxA(window->getHandle(), "Failed to compile OpenGL shaders!", "Shader Error", MB_ICONERROR);
-        return 1;
-    }
-
-    auto textureAtlas = std::make_unique<TextureAtlas>();
-    if (!textureAtlas->init()) {
-        std::cerr << "CRITICAL: Failed to initialize TextureAtlas!" << std::endl;
-        MessageBoxA(window->getHandle(), "Failed to initialize 16x16 Texture Atlas!", "Texture Error", MB_ICONERROR);
-        return 1;
-    }
-
-    window->setResizeCallback([&](int w, int h) {
-        glContext->resize(w, h);
-    });
-
-    // 4. World & Palworld Building System
-    auto world = std::make_unique<World>(1337);
-    auto buildingMgr = std::make_unique<BuildingManager>(world.get(), audio.get());
-
-    // 5. Player Setup on Ground Surface & Initial RPG Starter Kit
-    int spawnGroundY = world->getHighestBlock(0, 0);
-    Player player(Vec3(0.0f, static_cast<float>(spawnGroundY) + 1.8f, 0.0f));
-    player.setName(config.account.username);
-    player.setCharacterClass(config.account.characterClass);
-    camera.setPosition(player.getPosition());
-
-    // Populate initial starter kit so hotbar and inventory are immediately usable & visible
-    Inventory& pInv = player.getInventory();
-    pInv.setSlot(0, ItemStack(513, 1));  // Iron Broadsword (38 Atk)
-    pInv.setSlot(1, ItemStack(514, 1));  // Iron Pickaxe (Tier 3)
-    pInv.setSlot(2, ItemStack(578, 1));  // Iron Axe (32 Atk)
-    pInv.setSlot(3, ItemStack(72, 64));  // Oak Wood Planks (Block #72)
-    pInv.setSlot(4, ItemStack(37, 64));  // Cobblestone (Block #37)
-    pInv.setSlot(5, ItemStack(551, 32)); // Torches
-    pInv.setSlot(6, ItemStack(522, 16)); // Cooked Feast (Restores 40 HP & 100 Stamina)
-    pInv.setSlot(7, ItemStack(331, 1));  // Crafting Table Workstation
-    pInv.setSlot(8, ItemStack(332, 1));  // Furnace (Ocak)
-
-    // Equipped Starting Armor
-    pInv.setSlot(Inventory::SLOT_HELMET, ItemStack(530, 1)); // Leather Cap
-    pInv.setSlot(Inventory::SLOT_CHEST,  ItemStack(531, 1)); // Leather Tunic
-    pInv.setSlot(Inventory::SLOT_LEGS,   ItemStack(532, 1)); // Leather Pants
-    pInv.setSlot(Inventory::SLOT_BOOTS,  ItemStack(533, 1)); // Leather Boots
-
-    // Backpack Supplies
-    pInv.setSlot(9,  ItemStack(501, 32)); // Iron Ingots
-    pInv.setSlot(10, ItemStack(503, 16)); // Gold Ingots
-    pInv.setSlot(11, ItemStack(552, 32)); // Coal
-    pInv.setSlot(12, ItemStack(520, 8));  // Health Potions
-    pInv.setSlot(13, ItemStack(523, 10)); // Pal Spheres
-    pInv.setSlot(14, ItemStack(515, 1));  // Hunter Bow
-    pInv.setSlot(15, ItemStack(516, 64)); // Arrows
-    pInv.setSlot(16, ItemStack(550, 32)); // Wooden Sticks
-
-    // 6. Dynamic Mob Spawner & Safe Surface Initial Population
-    MobSpawner mobSpawner;
-    std::vector<std::unique_ptr<Creature>> creatures;
-    mobSpawner.spawnInitial(world.get(), player.getPosition(), creatures);
-
-    // 7. UI & Iris Shader Subsystems
-    auto irisManager = std::make_unique<IrisShaderManager>();
-    irisManager->init(window->getWidth(), window->getHeight());
-    irisManager->setMotionBlur(config.graphics.motionBlur);
-    irisManager->setMotionBlurStrength(config.graphics.motionBlurStrength);
-    IrisShaderUI irisShaderUI(irisManager.get());
-
-    auto uiRenderer = std::make_unique<UIRenderer>();
-    HUD hud(uiRenderer.get());
-    InventoryUI inventoryMenu;
-    BuildMenuUI buildMenu(uiRenderer.get());
-    BlockCatalogUI blockCatalog(uiRenderer.get());
-    BestiaryUI bestiary(uiRenderer.get());
-    BiomeCodexUI biomeCodex(uiRenderer.get());
-    SettingsUI settingsMenu;
-    UpdateCalendarUI updateCalendar(uiRenderer.get());
-
-    // Co-op Multiplayer & Server Subsystems
-    Net::AetheriaServer localServer;
-    auto netClient = std::make_unique<Net::NetworkClient>();
-    MultiplayerUI multiplayerUI(netClient.get(), &localServer);
-    multiplayerUI.setPlayerName(config.account.username);
-    ChatUI chatUI;
-    SkillTreeUI skillTreeUI;
-
-    // Account & Profile Login Subsystem
-    LoginUI loginUI;
-    loginUI.setUsername(config.account.username);
-    loginUI.setCharacterClass(config.account.characterClass);
-    loginUI.setRace(config.account.race);
-    loginUI.setRememberMe(config.account.rememberMe);
-    player.setRace(config.account.race);
-
-    if (!config.account.rememberMe || !config.account.isLoggedIn) {
-        loginUI.setOpen(true);
-    }
-
-    window->setCharCallback([&](char c) {
-        if (loginUI.isOpen()) {
-            loginUI.onCharInput(c);
-        } else if (multiplayerUI.isOpen()) {
-            multiplayerUI.onCharInput(c);
-        } else if (chatUI.isOpen()) {
-            chatUI.onCharInput(c);
-        }
-    });
-
-    window->setKeyCallback([&](int key) {
-        if (loginUI.isOpen()) {
-            loginUI.onKeyDown(key);
-        } else if (multiplayerUI.isOpen()) {
-            multiplayerUI.onKeyDown(key);
-        } else if (chatUI.isOpen()) {
-            chatUI.onKeyDown(key);
-        }
-    });
-
-    chatUI.setOnSendMessage([&](const std::string& msg) {
-        if (netClient->isConnected()) {
-            netClient->sendChat(msg);
-        } else {
-            chatUI.addMessage(player.getName(), msg, {0.75f, 0.9f, 1.0f, 1.0f});
-        }
-    });
-
-    settingsMenu.setOpenIrisCallback([&]() {
-        settingsMenu.setOpen(false);
-        irisShaderUI.setOpen(true);
-    });
-
-    enum class GameState { MainMenu, Playing };
-    GameState gameState = GameState::MainMenu;
-
-    MainMenuUI mainMenu;
-    mainMenu.setOnPlay([&]() {
-        gameState = GameState::Playing;
-        window->setCursorLocked(true);
-    });
-    mainMenu.setOnOpenMultiplayer([&]() {
-        multiplayerUI.setOpen(true);
-    });
-    mainMenu.setOnOpenLogin([&]() {
-        loginUI.setOpen(true);
-    });
-    loginUI.setOnLoginSuccess([&](const std::string& u, const std::string& cls, const std::string& race) {
-        config.account.username = u;
-        config.account.characterClass = cls;
-        config.account.race = race;
-        config.account.isLoggedIn = true;
-        config.account.rememberMe = loginUI.getRememberMe();
-        config.save();
-
-        player.setName(u);
-        player.setCharacterClass(cls);
-        player.setRace(race);
-        multiplayerUI.setPlayerName(u);
-    });
-    multiplayerUI.setOnStartGame([&]() {
-        gameState = GameState::Playing;
-        window->setCursorLocked(true);
-    });
-    multiplayerUI.setOnStartGameConfig([&](uint32_t seed, bool isHost, uint16_t port, const std::string& connectIp) {
-        if (!isHost && connectIp.empty()) {
-            if (netClient->isConnected()) netClient->disconnect();
-            if (localServer.isRunning()) localServer.stopAsync();
-        }
-        if (seed != 0 && world && world->getSeed() != seed) {
-            world = std::make_unique<World>(seed);
-            buildingMgr = std::make_unique<BuildingManager>(world.get(), audio.get());
-            int spawnY = world->getHighestBlock(0, 0);
-            player.setPosition(Vec3(0.0f, static_cast<float>(spawnY) + 1.8f, 0.0f));
-            camera.setPosition(player.getPosition());
-            creatures.clear();
-            mobSpawner.spawnInitial(world.get(), player.getPosition(), creatures);
-        }
-        gameState = GameState::Playing;
-        window->setCursorLocked(true);
-    });
-    multiplayerUI.setOnBackToMenu([&]() {
-        multiplayerUI.setOpen(false);
-    });
-
-    mainMenu.setOnOpenCalendar([&]() {
-        updateCalendar.open();
-    });
-    mainMenu.setOnOpenShaders([&]() {
-        irisShaderUI.setOpen(true);
-    });
-    mainMenu.setOnOpenSettings([&]() {
-        settingsMenu.setOpen(true);
-    });
-    mainMenu.setOnQuit([&]() {
-        PostQuitMessage(0);
-    });
-
-    settingsMenu.setQuitToTitleCallback([&]() {
-        if (netClient->isConnected()) {
-            netClient->disconnect();
-        }
-        if (localServer.isRunning()) {
-            localServer.stopAsync();
-        }
-        gameState = GameState::MainMenu;
-        window->setCursorLocked(false);
-    });
-
-    GLBuffer creatureBuffer;
-    GLBuffer itemBuffer;
-    std::vector<std::unique_ptr<ItemEntity>> droppedItems;
-    std::vector<std::unique_ptr<CaptureSphere>> captureSpheres;
-
-    // Minecraft-Style Continuous Block Mining State
-    float miningProgress = 0.0f;
-    IVec3 currentMiningPos{0, -999, 0};
-    uint16_t currentMiningId = 0;
-    float miningSwingTimer = 0.0f;
-    bool hasTargetedBlock = false;
-    IVec3 targetedBlockPos{0, 0, 0};
-
-    window->setCursorLocked(false);
-
-    std::cout << "\nGame started on Main Menu! WASD to move, [C] Zoom, [O] Iris Shaders, [E] Inventory, [ESC] Pause!\n" << std::endl;
-
-    // ----------------------------------------------------
-    // MAIN ENGINE LOOP
-    // ----------------------------------------------------
-    while (!window->shouldClose()) {
-        if (!window->processMessages()) break;
-
-        timer.update();
-        float dt = timer.getDeltaTime();
-        float totalTime = timer.getTotalTime();
-
-        // ----------------------------------------------------
-        // MENU TOGGLE & ESC HIERARCHY
-        // ----------------------------------------------------
-        // ESC key: Priority close for any active menu, or open Settings if in gameplay
-        if (window->isKeyPressed(VK_ESCAPE)) {
-            if (loginUI.isOpen()) {
-                loginUI.setOpen(false);
-            } else if (skillTreeUI.isOpen()) {
-                skillTreeUI.setOpen(false);
-            } else if (chatUI.isOpen()) {
-                chatUI.setOpen(false);
-            } else if (multiplayerUI.isOpen()) {
-                multiplayerUI.setOpen(false);
-            } else if (updateCalendar.getIsOpen()) {
-                updateCalendar.close();
-            } else if (irisShaderUI.isOpen()) {
-                irisShaderUI.setOpen(false);
-            } else if (settingsMenu.isOpen()) {
-                settingsMenu.setOpen(false);
-            } else if (gameState == GameState::MainMenu) {
-                // At main menu, nothing else to close
-            } else if (inventoryMenu.getIsOpen()) {
-                inventoryMenu.returnGridItemsToPlayer(player);
-                inventoryMenu.close();
-            } else if (buildMenu.getIsOpen()) {
-                buildMenu.close();
-            } else if (blockCatalog.getIsOpen()) {
-                blockCatalog.close();
-            } else if (bestiary.getIsOpen()) {
-                bestiary.close();
-            } else if (biomeCodex.getIsOpen()) {
-                biomeCodex.close();
-            } else if (buildingMgr->getIsBuilding() || buildingMgr->getIsDismantling()) {
-                buildingMgr->setBuildMode(false);
-                buildingMgr->setDismantleMode(false);
-            } else {
-                settingsMenu.setOpen(true);
-            }
-        }
-
-        // Gameplay hotkeys (only active when playing, not in Main Menu)
-        if (gameState == GameState::Playing) {
-            // 'E', 'TAB', 'I' keys: Toggle Inventory & Crafting UI
-            if (window->isKeyPressed('E') || window->isKeyPressed('I') || window->isKeyPressed(VK_TAB)) {
-                if (irisShaderUI.isOpen()) {
-                    irisShaderUI.setOpen(false);
-                    inventoryMenu.openPlayerInventory();
-                } else if (settingsMenu.isOpen()) {
-                    settingsMenu.setOpen(false);
-                    inventoryMenu.openPlayerInventory();
-                } else if (inventoryMenu.getIsOpen()) {
-                    inventoryMenu.returnGridItemsToPlayer(player);
-                    inventoryMenu.close();
-                } else {
-                    buildMenu.close();
-                    blockCatalog.close();
-                    bestiary.close();
-                    biomeCodex.close();
-                    buildingMgr->setBuildMode(false);
-                    buildingMgr->setDismantleMode(false);
-                    inventoryMenu.openPlayerInventory();
-                }
-            }
-
-            // 'O' key quick toggle for Iris Shaderpacks Menu
-            if (window->isKeyPressed('O')) {
-                irisShaderUI.toggle();
-                if (irisShaderUI.isOpen()) {
-                    settingsMenu.setOpen(false);
-                    inventoryMenu.returnGridItemsToPlayer(player);
-                    inventoryMenu.close();
-                    buildMenu.close();
-                    blockCatalog.close();
-                    bestiary.close();
-                    biomeCodex.close();
-                    buildingMgr->setBuildMode(false);
-                    buildingMgr->setDismantleMode(false);
-                }
-            }
-
-            // Sub-menu keys (B = Build, N = 365 Blocks, M = Bestiary, J = Biomes, K = Calendar, X = Dismantle)
-            if (!updateCalendar.getIsOpen() && !irisShaderUI.isOpen() && !settingsMenu.isOpen() && !inventoryMenu.getIsOpen()) {
-                if (window->isKeyPressed('B')) {
-                    buildMenu.toggle();
-                    if (buildMenu.getIsOpen()) {
-                        blockCatalog.close();
-                        bestiary.close();
-                        biomeCodex.close();
-                        buildingMgr->setBuildMode(false);
-                        buildingMgr->setDismantleMode(false);
-                    }
-                }
-                if (window->isKeyPressed('N')) {
-                    blockCatalog.toggle();
-                    if (blockCatalog.getIsOpen()) {
-                        buildMenu.close();
-                        bestiary.close();
-                        biomeCodex.close();
-                        buildingMgr->setBuildMode(false);
-                        buildingMgr->setDismantleMode(false);
-                    }
-                }
-                if (window->isKeyPressed('M')) {
-                    bestiary.toggle();
-                    if (bestiary.getIsOpen()) {
-                        buildMenu.close();
-                        blockCatalog.close();
-                        biomeCodex.close();
-                        buildingMgr->setBuildMode(false);
-                        buildingMgr->setDismantleMode(false);
-                    }
-                }
-                if (window->isKeyPressed('J')) {
-                    biomeCodex.toggle();
-                    if (biomeCodex.getIsOpen()) {
-                        buildMenu.close();
-                        blockCatalog.close();
-                        bestiary.close();
-                        buildingMgr->setBuildMode(false);
-                        buildingMgr->setDismantleMode(false);
-                    }
-                }
-                if (window->isKeyPressed('K')) {
-                    skillTreeUI.toggle();
-                    if (skillTreeUI.isOpen()) {
-                        buildMenu.close();
-                        blockCatalog.close();
-                        bestiary.close();
-                        biomeCodex.close();
-                        updateCalendar.close();
-                        inventoryMenu.returnGridItemsToPlayer(player);
-                        inventoryMenu.close();
-                        buildingMgr->setBuildMode(false);
-                        buildingMgr->setDismantleMode(false);
-                    }
-                }
-                if (window->isKeyPressed('L') || window->isKeyPressed('Y')) {
-                    updateCalendar.toggle();
-                    if (updateCalendar.getIsOpen()) {
-                        skillTreeUI.setOpen(false);
-                        buildMenu.close();
-                        blockCatalog.close();
-                        bestiary.close();
-                        biomeCodex.close();
-                        buildingMgr->setBuildMode(false);
-                        buildingMgr->setDismantleMode(false);
-                    }
-                }
-                if (window->isKeyPressed('X')) {
-                    buildingMgr->setDismantleMode(!buildingMgr->getIsDismantling());
-                    if (buildingMgr->getIsDismantling()) {
-                        buildingMgr->setBuildMode(false);
-                        buildMenu.close();
-                    }
-                }
-                if (window->isKeyPressed(VK_F5)) {
-                    config.gameplay.thirdPerson = !config.gameplay.thirdPerson;
-                }
-                if (window->isKeyPressed(VK_F3)) {
-                    hud.toggleF3();
-                }
-                if (window->isKeyPressed(VK_F1)) {
-                    hud.toggleHUD();
-                }
-                // 'T' or 'Enter' key: Open in-game co-op chat
-                if (window->isKeyPressed('T') || window->isKeyPressed(VK_RETURN)) {
-                    chatUI.setOpen(true);
-                }
-            }
-        }
-
-        bool anyMenuOpen = (gameState == GameState::MainMenu) || loginUI.isOpen() || multiplayerUI.isOpen() || chatUI.isOpen() ||
-                           skillTreeUI.isOpen() || updateCalendar.getIsOpen() || irisShaderUI.isOpen() || settingsMenu.isOpen() ||
-                           inventoryMenu.getIsOpen() || buildMenu.getIsOpen() ||
-                           blockCatalog.getIsOpen() || bestiary.getIsOpen() || biomeCodex.getIsOpen();
-
-        window->setCursorLocked(!anyMenuOpen);
-
-        // Sync Dynamic Settings (only apply when changed to prevent driver stutter)
-        static bool lastVSync = true;
-        if (config.graphics.vsync != lastVSync) {
-            glContext->setVSync(config.graphics.vsync);
-            lastVSync = config.graphics.vsync;
-        }
-        static bool lastWireframe = false;
-        if (config.graphics.wireframe != lastWireframe) {
-            glContext->setWireframe(config.graphics.wireframe);
-            lastWireframe = config.graphics.wireframe;
-        }
-        camera.setThirdPerson(config.gameplay.thirdPerson);
-        player.setStepHeight(config.controls.autoStepUp ? config.controls.stepHeight : 0.0f);
-
-        // Dynamic Motion Blur synchronization
-        static bool lastIrisMB = true;
-        if (irisManager->getMotionBlur() != lastIrisMB) {
-            config.graphics.motionBlur = irisManager->getMotionBlur();
-            lastIrisMB = irisManager->getMotionBlur();
-        } else if (config.graphics.motionBlur != lastIrisMB) {
-            irisManager->setMotionBlur(config.graphics.motionBlur);
-            lastIrisMB = config.graphics.motionBlur;
-        }
-        irisManager->setMotionBlurStrength(config.graphics.motionBlurStrength);
-
-        // Update Camera Zoom or Title Panorama
-        if (gameState == GameState::MainMenu) {
-            camera.addYawPitch(dt * 3.5f, 0.0f);
-            camera.setZooming(false);
-            camera.updateZoom(config.graphics.fov, dt, false);
-        } else {
-            bool zoomDown = window->isKeyDown('C') && !anyMenuOpen;
-            camera.setZooming(zoomDown);
-            camera.updateZoom(config.graphics.fov, dt, player.getIsSprinting());
-        }
-
-        // Mouse coordinates & keyboard modifiers
-        int mx = window->getMouseX();
-        int my = window->getMouseY();
-        bool mDown = window->isMouseButtonDown(0);
-        bool mClicked = window->isMouseButtonPressed(0);
-        bool rClicked = window->isMouseButtonPressed(1);
-        bool shiftDown = window->isKeyDown(VK_SHIFT);
-
-        if (anyMenuOpen || gameState == GameState::MainMenu) {
-            miningProgress = 0.0f;
-            currentMiningPos = {0, -999, 0};
-            currentMiningId = 0;
-            hasTargetedBlock = false;
-        }
-
-        // Handle Active Menu Input or Gameplay Input
-        if (updateCalendar.getIsOpen()) {
-            if (window->isKeyPressed('1')) updateCalendar.setViewMode(0);
-            if (window->isKeyPressed('2')) updateCalendar.setViewMode(1);
-            if (window->isKeyPressed('A') || window->isKeyPressed(VK_LEFT)) updateCalendar.prevMonth();
-            if (window->isKeyPressed('D') || window->isKeyPressed(VK_RIGHT)) updateCalendar.nextMonth();
-        } else if (gameState == GameState::MainMenu) {
-            // Handled during UI rendering
-        } else if (irisShaderUI.isOpen()) {
-            // Handled during UI rendering
-        } else if (settingsMenu.isOpen()) {
-            // Handled during UI rendering
-        } else if (inventoryMenu.getIsOpen()) {
-            inventoryMenu.handleInput(*window, player, audio.get());
-        } else if (buildMenu.getIsOpen()) {
-            buildMenu.handleInput(*window, *buildingMgr);
-        } else if (blockCatalog.getIsOpen()) {
-            blockCatalog.handleInput(*window, player);
-        } else if (bestiary.getIsOpen()) {
-            bestiary.handleInput(*window);
-        } else if (biomeCodex.getIsOpen()) {
-            biomeCodex.handleInput(*window);
-        } else {
-            // Gameplay Controls (WASD, Double-tap W Sprint, Shift Crouch, R Dash)
-            player.handleInput(*window, camera, audio.get(), dt, buildingMgr->getIsBuilding());
-
-            Ray aimRay(camera.getRenderPosition(), camera.getForward());
-            RaycastResult lookHit = world->raycast(aimRay, 5.5f);
-            if (lookHit.hit && lookHit.blockId != 0 && lookHit.blockId != 52) {
-                hasTargetedBlock = true;
-                targetedBlockPos = lookHit.hitBlockPos;
-            } else {
-                hasTargetedBlock = false;
-            }
-
-            // -----------------------------------------------------------------
-            // COMBAT & MINECRAFT-STYLE CONTINUOUS BLOCK MINING
-            // -----------------------------------------------------------------
-            if (buildingMgr->getIsBuilding()) {
-                miningProgress = 0.0f;
-                currentMiningPos = {0, -999, 0};
-                currentMiningId = 0;
-                if (window->isMouseButtonPressed(0)) {
-                    buildingMgr->tryPlaceStructure(&player.getInventory());
-                }
-            } else if (buildingMgr->getIsDismantling()) {
-                miningProgress = 0.0f;
-                currentMiningPos = {0, -999, 0};
-                currentMiningId = 0;
-                if (window->isMouseButtonPressed(0)) {
-                    buildingMgr->tryDismantle(aimRay, &player.getInventory());
-                }
-            } else {
-                // Check if aiming at any creature in front of player
-                Creature* bestTarget = nullptr;
-                float closestDist = 999.0f;
-
-                for (auto& c : creatures) {
-                    if (!c->getIsDead()) {
-                        Vec3 toMob = (c->getPosition() + Vec3(0, c->getDef().size.y * 0.5f, 0)) - camera.getRenderPosition();
-                        float dist = toMob.length();
-                        if (dist < 3.8f) {
-                            Vec3 dirToMob = toMob.normalized();
-                            float dot = dirToMob.dot(camera.getForward());
-                            if (dot > 0.40f && dist < closestDist) {
-                                closestDist = dist;
-                                bestTarget = c.get();
-                            }
-                        }
-                    }
-                }
-
-                // Immediate Creature Attack on Click (Minecraft 1.9+ Attack Cooldown & Scaling)
-                if (bestTarget && window->isMouseButtonPressed(0)) {
-                    float charge = player.getAttackRechargeProgress();
-                    float rawDmg = player.getAttackPower(); // Pre-scaled by (0.2 + 0.8 * charge^2)
-
-                    // Minecraft 1.9 Critical Hit check:
-                    // Player is falling (velocity.y < -0.4), not on ground, not in water, and charge >= 0.85f
-                    bool isCrit = (player.getVelocity().y < -0.4f && !player.isGrounded() && !player.getIsInWater() && charge >= 0.85f);
-                    if (isCrit) {
-                        rawDmg *= 1.50f; // +50% critical damage!
-                    }
-
-                    // Reset attack cooldown after computing damage
-                    player.triggerAttack();
-
-                    // Knockback scaled by charge (suppressed on rapid spam clicks)
-                    Vec3 knockback = camera.getForward();
-                    float knockMult = (charge >= 0.85f) ? 1.0f : (0.20f + 0.80f * charge);
-                    knockback = knockback * knockMult;
-
-                    // Audio feedback: sharp heavy strike if charged/crit, lighter swish if spamming
-                    if (audio) {
-                        if (isCrit) {
-                            audio->playSound(SoundID::SwordSwing, 1.25f, 1.25f);
-                        } else if (charge >= 0.85f) {
-                            audio->playSound(SoundID::SwordSwing, 1.0f, 1.0f);
-                        } else {
-                            audio->playSound(SoundID::SwordSwing, 0.45f, 1.5f);
-                        }
-                    }
-
-                    bestTarget->takeDamage(rawDmg, knockback, audio.get());
-
-                    // Vampire Race Passive: 20% Life Steal on hitting enemies!
-                    if (player.isVampire()) {
-                        float steal = rawDmg * 0.20f;
-                        player.heal(steal);
-                        hud.addNotification("+ " + std::to_string(static_cast<int>(steal)) + " HP (Can Calma)!", {0.95f, 0.25f, 0.65f, 1.0f});
-                    }
-
-                    miningProgress = 0.0f;
-                    currentMiningPos = {0, -999, 0};
-                    currentMiningId = 0;
-
-                    // Alert nearby tamed companions to assist master!
-                    for (auto& comp : creatures) {
-                        if (!comp->getIsDead() && comp->getIsTamed() && comp->getStance() == CompanionStance::Follow) {
-                            float d = (comp->getPosition() - player.getPosition()).length();
-                            if (d <= 25.0f) {
-                                comp->notifyMasterAttacked(bestTarget);
-                            }
-                        }
-                    }
-
-                    if (bestTarget->getIsDead()) {
-                        player.gainXP(bestTarget->getDef().xpReward, audio.get());
-
-                        // Award companion XP to nearby tamed companions
-                        for (auto& comp : creatures) {
-                            if (!comp->getIsDead() && comp->getIsTamed()) {
-                                float d = (comp->getPosition() - player.getPosition()).length();
-                                if (d <= 25.0f) {
-                                    comp->gainCompanionXP(bestTarget->getDef().xpReward * 0.9f, audio.get());
-                                }
-                            }
-                        }
-
-                        // Drop physical 3D creature loot in the world!
-                        uint16_t lootId = bestTarget->getDef().dropItemId;
-                        uint32_t lootCount = bestTarget->getDef().dropCount;
-                        if (lootId == 0) {
-                            lootId = 508; // Raw Meat
-                            lootCount = 2;
-                        }
-                        Vec3 mCenter = bestTarget->getPosition() + Vec3(0, 0.5f, 0);
-                        for (uint32_t li = 0; li < lootCount; ++li) {
-                            Vec3 popVel(
-                                (std::rand() % 100 - 50) * 0.04f,
-                                3.5f + (std::rand() % 10) * 0.2f,
-                                (std::rand() % 100 - 50) * 0.04f
-                            );
-                            droppedItems.push_back(std::make_unique<ItemEntity>(ItemStack{lootId, 1, 64}, mCenter, popVel));
-                        }
-                    }
-                } else if (!bestTarget && window->isMouseButtonDown(0)) {
-                    // Holding LMB to Mine Targeted Voxel Block
-                    RaycastResult rHit = world->raycast(aimRay, 5.5f);
-                    if (rHit.hit && rHit.blockId != 0 && rHit.blockId != 52) { // 52 = Obsidian Bedrock (Indestructible)
-                        if (rHit.hitBlockPos.x != currentMiningPos.x ||
-                            rHit.hitBlockPos.y != currentMiningPos.y ||
-                            rHit.hitBlockPos.z != currentMiningPos.z) {
-                            currentMiningPos = rHit.hitBlockPos;
-                            currentMiningId = rHit.blockId;
-                            miningProgress = 0.0f;
-                            miningSwingTimer = 0.0f;
-                        }
-
-                        const BlockDef& bDef = BlockRegistry::get(currentMiningId);
-                        const ItemStack& heldItem = player.getHeldItem();
-                        const ItemDef& heldDef = ItemRegistry::get(heldItem.id);
-
-                        // Tool affinity speed multiplier
-                        float speedMult = 1.0f;
-                        bool isEffective = false;
-                        if (bDef.toolRequired == 0) {
-                            if (heldDef.toolType == ToolType::Shovel && bDef.category == BlockCategory::Terrain) isEffective = true;
-                            else if (heldDef.toolType == ToolType::Axe && bDef.category == BlockCategory::Wood) isEffective = true;
-                            else if (heldDef.toolType == ToolType::Pickaxe && (bDef.category == BlockCategory::Stone || bDef.category == BlockCategory::Ores)) isEffective = true;
-                        } else if (bDef.toolRequired == 1 && heldDef.toolType == ToolType::Pickaxe) {
-                            isEffective = true;
-                        } else if (bDef.toolRequired == 2 && heldDef.toolType == ToolType::Axe) {
-                            isEffective = true;
-                        } else if (bDef.toolRequired == 3 && heldDef.toolType == ToolType::Shovel) {
-                            isEffective = true;
-                        }
-
-                        if (isEffective) {
-                            // Wood: 3.5x, Stone: 5.5x, Iron: 7.5x, Gold: 9.5x, Diamond: 12.5x, Aetherium: 18.0x
-                            speedMult = 1.5f + heldDef.toolTier * 2.0f;
-                            if (heldDef.toolTier == 4) speedMult = 9.5f;
-                            if (heldDef.toolTier >= 5) speedMult = 12.5f + (heldDef.toolTier - 5) * 5.0f;
-                        } else {
-                            // Wrong tool penalty for tough stone and ores
-                            if (bDef.toolRequired == 1) speedMult = 0.30f;
-                            else speedMult = 1.0f;
-                        }
-
-                        float breakDuration = std::max(0.12f, (bDef.hardness * 1.25f) / speedMult);
-                        if (bDef.hardness <= 0.06f) breakDuration = 0.10f; // Instant foliage & sapling break
-
-                        // Discrete hit impact sound and arm swing animation
-                        miningSwingTimer -= dt;
-                        if (miningSwingTimer <= 0.0f) {
-                            miningSwingTimer = 0.22f;
-                            player.triggerAttack();
-                            audio->playSound(SoundID::BlockBreak, 0.45f, 0.75f + miningProgress * 0.4f);
-                        }
-
-                        miningProgress += dt / breakDuration;
-
-                        if (miningProgress >= 1.0f) {
-                            // Complete fracture: block broken!
-                            world->setBlock(currentMiningPos.x, currentMiningPos.y, currentMiningPos.z, 0);
-                            if (netClient->isConnected()) {
-                                netClient->sendBlockModify(currentMiningPos.x, currentMiningPos.y, currentMiningPos.z, 0);
-                            }
-                            audio->playSound(SoundID::BlockBreak, 1.0f, 1.0f);
-                            player.gainXP(5, audio.get());
-
-                            uint16_t dropId = (bDef.dropItemId > 0) ? bDef.dropItemId : currentMiningId;
-                            uint32_t dropCount = (bDef.dropCount > 0) ? bDef.dropCount : 1;
-
-                            // Check if leaf block
-                            bool isLeaf = (currentMiningId == 73 || currentMiningId == 76 || currentMiningId == 79 ||
-                                           currentMiningId == 82 || currentMiningId == 85 || currentMiningId == 88 ||
-                                           currentMiningId == 91 || currentMiningId == 94 || currentMiningId == 97 ||
-                                           (currentMiningId >= 100 && currentMiningId <= 118 && (currentMiningId - 73) % 3 == 0));
-
-                            Vec3 bCenter(currentMiningPos.x + 0.5f, currentMiningPos.y + 0.4f, currentMiningPos.z + 0.5f);
-
-                            if (isLeaf) {
-                                // Tree leaf drop tables: Saplings (~18%), Sticks (~15%), Apples (~8%)
-                                uint16_t saplingDrop = 366; // Oak default
-                                if (currentMiningId == 76) saplingDrop = 367; // Birch
-                                else if (currentMiningId == 79 || currentMiningId == 82) saplingDrop = 368; // Spruce / Pine
-                                else if (currentMiningId == 97) saplingDrop = 369; // Cherry
-
-                                if ((std::rand() % 100) < 18) {
-                                    Vec3 popVel((std::rand() % 100 - 50) * 0.035f, 3.8f + (std::rand() % 10) * 0.15f, (std::rand() % 100 - 50) * 0.035f);
-                                    droppedItems.push_back(std::make_unique<ItemEntity>(ItemStack{saplingDrop, 1, 64}, bCenter, popVel));
-                                }
-                                if ((std::rand() % 100) < 15) {
-                                    Vec3 popVel((std::rand() % 100 - 50) * 0.035f, 3.8f + (std::rand() % 10) * 0.15f, (std::rand() % 100 - 50) * 0.035f);
-                                    droppedItems.push_back(std::make_unique<ItemEntity>(ItemStack{550, 1, 64}, bCenter, popVel));
-                                }
-                                if (currentMiningId == 73 && (std::rand() % 100) < 8) {
-                                    Vec3 popVel((std::rand() % 100 - 50) * 0.035f, 3.8f + (std::rand() % 10) * 0.15f, (std::rand() % 100 - 50) * 0.035f);
-                                    droppedItems.push_back(std::make_unique<ItemEntity>(ItemStack{561, 1, 32}, bCenter, popVel));
-                                }
-                            } else {
-                                for (uint32_t di = 0; di < dropCount; ++di) {
-                                    Vec3 popVel((std::rand() % 100 - 50) * 0.035f, 3.8f + (std::rand() % 10) * 0.15f, (std::rand() % 100 - 50) * 0.035f);
-                                    droppedItems.push_back(std::make_unique<ItemEntity>(ItemStack{dropId, 1, 64}, bCenter, popVel));
-                                }
-                            }
-
-                            // If mined block is a wooden storage chest, spill all stored items into the world!
-                            if (currentMiningId == 337 || currentMiningId == 333) {
-                                auto chestItems = ChestManager::instance().extractChestContents(currentMiningPos);
-                                for (const auto& itm : chestItems) {
-                                    if (!itm.isEmpty()) {
-                                        Vec3 popVel((std::rand() % 100 - 50) * 0.04f, 3.4f + (std::rand() % 10) * 0.15f, (std::rand() % 100 - 50) * 0.04f);
-                                        droppedItems.push_back(std::make_unique<ItemEntity>(itm, bCenter, popVel));
-                                    }
-                                }
-                            }
-
-                            miningProgress = 0.0f;
-                            currentMiningPos = {0, -999, 0};
-                            currentMiningId = 0;
-                        }
-                    } else {
-                        // Looking at air, bedrock, or out of reach
-                        if (window->isMouseButtonPressed(0)) {
-                            player.triggerAttack();
-                            if (audio) audio->playSound(SoundID::SwordSwing, 0.45f, 1.35f);
-                        }
-                        miningProgress = 0.0f;
-                        currentMiningPos = {0, -999, 0};
-                        currentMiningId = 0;
-                    }
-                } else {
-                    // Not holding LMB
-                    miningProgress = 0.0f;
-                    currentMiningPos = {0, -999, 0};
-                    currentMiningId = 0;
-                }
-            }
-
-            // Right Click Action (Workstations, Consumables, Pal Spheres, Saplings & Bone Meal)
-            if (window->isMouseButtonPressed(1)) {
-                if (buildingMgr->getIsBuilding()) {
-                    buildingMgr->rotatePreview();
-                } else {
-                    RaycastResult rHit = world->raycast(aimRay, 5.5f);
-                    const PlacedStructure* hitPiece = buildingMgr->getTargetedStructure(aimRay, 5.5f);
-
-                    if (rHit.hit && rHit.blockId == 331) { // Crafting Table
-                        inventoryMenu.openCraftingTable();
-                        audio->playSound(SoundID::BlockPlace, 1.2f, 0.9f);
-                    } else if (rHit.hit && rHit.blockId == 332) { // Furnace (Ocak)
-                        inventoryMenu.openFurnace();
-                        audio->playSound(SoundID::BlockPlace, 0.9f, 0.9f);
-                    } else if (rHit.hit && (rHit.blockId == 337 || rHit.blockId == 333)) { // Wooden Storage Chest Block
-                        auto& chestSlots = ChestManager::instance().getOrCreateChest(rHit.hitBlockPos);
-                        inventoryMenu.openChest(rHit.hitBlockPos, &chestSlots);
-                        audio->playSound(SoundID::BlockPlace, 0.85f, 0.9f);
-                    } else if (hitPiece && hitPiece->type == StructureType::Storage_Chest) { // Palworld Structure Chest
-                        IVec3 pPos(static_cast<int>(std::floor(hitPiece->position.x)),
-                                   static_cast<int>(std::floor(hitPiece->position.y)),
-                                   static_cast<int>(std::floor(hitPiece->position.z)));
-                        auto& chestSlots = ChestManager::instance().getOrCreateChest(pPos);
-                        inventoryMenu.openChest(pPos, &chestSlots);
-                        audio->playSound(SoundID::BlockPlace, 0.85f, 0.9f);
-                    } else {
-                        ItemStack& held = player.getInventory().getSlot(player.getSelectedHotbarIndex());
-                        if (!held.isEmpty() && (held.id == 520 || held.id == 521 || held.id == 522)) {
-                            // Consumable potion/food
-                            std::string iName = ItemRegistry::get(held.id).name;
-                            if (player.tryUseHeldItem(audio.get())) {
-                                hud.addNotification("Used " + iName + "!", {0.4f, 0.95f, 0.5f, 1.0f});
-                            }
-                        } else if (!held.isEmpty() && (held.id == 523 || held.id == 526 || held.id == 527)) {
-                            // Throw physical 3D Capture Sphere projectile!
-                            Vec3 throwOrigin = camera.getRenderPosition() + camera.getForward() * 0.65f + Vec3(0, -0.1f, 0);
-                            Vec3 throwVel = camera.getForward() * 19.5f + Vec3(0, 3.8f, 0);
-                            captureSpheres.push_back(std::make_unique<CaptureSphere>(held.id, throwOrigin, throwVel));
-
-                            uint16_t sphereId = held.id;
-                            player.getInventory().removeItem(sphereId, 1);
-                            if (audio) audio->playSound(SoundID::SwordSwing, 1.25f, 1.35f);
-                            std::string sName = ItemRegistry::get(sphereId).name;
-                            hud.addNotification("Threw " + sName + "!", {0.30f, 0.90f, 1.0f, 1.0f});
-                        } else if (!held.isEmpty() && held.id == 525 && rHit.hit && World::isSapling(rHit.blockId)) {
-                            // Bone Meal applied to planted sapling: instantly mature into procedural tree!
-                            uint16_t saplingId = rHit.blockId;
-                            world->growTree(rHit.hitBlockPos.x, rHit.hitBlockPos.y, rHit.hitBlockPos.z, saplingId);
-                            world->removeSapling(rHit.hitBlockPos.x, rHit.hitBlockPos.y, rHit.hitBlockPos.z);
-                            held.count--;
-                            if (held.count == 0) held.clear();
-                            audio->playSound(SoundID::LevelUp, 1.2f, 1.1f);
-                            hud.addNotification("? Tree matured instantly with Bone Meal! ?", {0.35f, 0.95f, 0.55f, 1.0f});
-                        } else if (rHit.hit) {
-                            // Place held block
-                            if (!held.isEmpty() && held.id >= 1 && held.id <= 369) {
-                                bool canPlace = true;
-                                if (World::isSapling(held.id)) {
-                                    // Saplings must be planted on dirt, grass, podzol, turf, or moss
-                                    uint16_t ground = rHit.blockId;
-                                    bool isSoil = (ground == 1 || ground == 2 || ground == 3 || ground == 4 ||
-                                                   ground == 5 || ground == 7 || ground == 9 || ground == 25 || ground == 26);
-                                    if (!isSoil || rHit.adjacentPos.y <= rHit.hitBlockPos.y) {
-                                        canPlace = false;
-                                        hud.addNotification("Saplings must be planted on dirt or grass!", {0.95f, 0.40f, 0.35f, 1.0f});
-                                    }
-                                }
-                                if (canPlace) {
-                                    world->setBlock(rHit.adjacentPos.x, rHit.adjacentPos.y, rHit.adjacentPos.z, held.id);
-                                    if (netClient->isConnected()) {
-                                        netClient->sendBlockModify(rHit.adjacentPos.x, rHit.adjacentPos.y, rHit.adjacentPos.z, held.id);
-                                    }
-                                    audio->playSound(SoundID::BlockPlace, 1.0f, 1.0f);
-                                    if (World::isSapling(held.id)) {
-                                        hud.addNotification("Planted " + ItemRegistry::get(held.id).name + "! (Growing...)", {0.4f, 0.95f, 0.5f, 1.0f});
-                                    }
-                                    held.count--;
-                                    if (held.count == 0) held.clear();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Active RPG Spells & Abilities
-            // [Q] or [G]: Fireball Spell
-            if (window->isKeyPressed('G') || (window->isKeyPressed('Q') && player.getSkillTree().hasSkill(SkillId::Fireball) && !window->isKeyDown(VK_SHIFT))) {
-                if (player.getSkillTree().hasSkill(SkillId::Fireball)) {
-                    if (player.getMana() < 25.0f) {
-                        hud.addNotification("Yetersiz Mana! (25 Mana Gerekli)", {1.0f, 0.35f, 0.35f, 1.0f});
-                    } else {
-                        player.spendMana(25.0f);
-                        player.triggerAttack();
-                        if (audio) {
-                            audio->playSound(SoundID::SwordSwing, 0.65f, 1.3f);
-                            audio->playSound(SoundID::BlockBreak, 0.75f, 1.2f);
-                        }
-
-                        RaycastResult fHit = world->raycast(aimRay, 32.0f);
-                        Vec3 impactPoint = fHit.hit ?
-                            Vec3(fHit.hitBlockPos.x + 0.5f, fHit.hitBlockPos.y + 0.5f, fHit.hitBlockPos.z + 0.5f) :
-                            (camera.getRenderPosition() + camera.getForward() * 28.0f);
-                        float fbDmg = 45.0f * player.getSkillTree().getDamageMultiplier();
-                        if (player.isElf()) fbDmg *= 1.20f;
-                        if (player.isDemon()) fbDmg += 8.0f;
-
-                        int hitCount = 0;
-                        for (auto& c : creatures) {
-                            if (!c->getIsDead() && !c->getIsTamed()) {
-                                float dist = (c->getPosition() - impactPoint).length();
-                                if (dist <= 5.5f) {
-                                    Vec3 kb = (c->getPosition() - impactPoint).normalized() * 5.0f + Vec3(0, 3.5f, 0);
-                                    c->takeDamage(fbDmg * (1.0f - dist / 7.0f), kb, audio.get());
-                                    hitCount++;
-                                }
-                            }
-                        }
-                        hud.addNotification("ALEV TOPU! " + std::to_string(hitCount) + " dusmana isabet etti!", {1.0f, 0.5f, 0.15f, 1.0f});
-                    }
-                }
-            }
-
-            // [Z]: Frost Nova Spell
-            if (window->isKeyPressed('Z')) {
-                if (player.getSkillTree().hasSkill(SkillId::FrostNova)) {
-                    if (player.getMana() < 30.0f) {
-                        hud.addNotification("Yetersiz Mana! (30 Mana Gerekli)", {1.0f, 0.35f, 0.35f, 1.0f});
-                    } else {
-                        player.spendMana(30.0f);
-                        if (audio) audio->playSound(SoundID::BlockBreak, 1.4f, 1.8f);
-
-                        float fnDmg = 30.0f * player.getSkillTree().getDamageMultiplier();
-                        if (player.isElf()) fnDmg *= 1.25f;
-
-                        int frozenCount = 0;
-                        for (auto& c : creatures) {
-                            if (!c->getIsDead() && !c->getIsTamed()) {
-                                float dist = (c->getPosition() - player.getPosition()).length();
-                                if (dist <= 8.5f) {
-                                    Vec3 kb = (c->getPosition() - player.getPosition()).normalized() * 3.5f + Vec3(0, 1.5f, 0);
-                                    c->takeDamage(fnDmg, kb, audio.get());
-                                    frozenCount++;
-                                }
-                            }
-                        }
-                        hud.addNotification("BUZ FIRTINASI! " + std::to_string(frozenCount) + " canavar donduruldu!", {0.3f, 0.9f, 1.0f, 1.0f});
-                    }
-                }
-            }
-
-            // [H]: Holy Heal Spell
-            if (window->isKeyPressed('H')) {
-                if (player.getSkillTree().hasSkill(SkillId::HolyHeal)) {
-                    if (player.getMana() < 40.0f) {
-                        hud.addNotification("Yetersiz Mana! (40 Mana Gerekli)", {1.0f, 0.35f, 0.35f, 1.0f});
-                    } else {
-                        player.spendMana(40.0f);
-                        player.heal(40.0f);
-                        if (audio) audio->playSound(SoundID::LevelUp, 1.35f, 1.1f);
-                        hud.addNotification("KUTSAL SIFA! +40 HP Yenilendi!", {1.0f, 0.9f, 0.35f, 1.0f});
-                    }
-                }
-            }
-
-            // 'Q' Key (or Shift+Q): Drop held item into the world as a 3D ItemEntity
-            if (window->isKeyPressed('Q') && (!player.getSkillTree().hasSkill(SkillId::Fireball) || window->isKeyDown(VK_SHIFT))) {
-                ItemStack& held = player.getInventory().getSlot(player.getSelectedHotbarIndex());
-                if (!held.isEmpty()) {
-                    Vec3 dropPos = player.getPosition() + Vec3(0, 1.2f, 0) + camera.getForward() * 0.7f;
-                    Vec3 dropVel = camera.getForward() * 5.0f + Vec3(0, 2.2f, 0);
-                    droppedItems.push_back(std::make_unique<ItemEntity>(ItemStack{held.id, 1, held.maxStack}, dropPos, dropVel));
-                    held.count--;
-                    if (held.count == 0) held.clear();
-                    audio->playSound(SoundID::ItemPickup, 0.8f, 0.7f);
-                }
-            }
-
-            // 'F' Key: Hammer blueprint scaffold
-            if (window->isKeyDown('F')) {
-                buildingMgr->hammerTargetBlueprint(aimRay, dt * 3.0f);
-            }
-
-            // 'R' Key: Rotate building piece when in building mode
-            if (window->isKeyPressed('R') && buildingMgr->getIsBuilding()) {
-                buildingMgr->rotatePreview();
-            }
-
-            // 'V' Key: Command Companion Stance (Follow -> Stay -> Work at Base)
-            if (window->isKeyPressed('V')) {
-                Creature* cmdTarget = nullptr;
-                float cDist = 16.0f;
-                for (auto& c : creatures) {
-                    if (!c->getIsDead() && c->getIsTamed()) {
-                        Vec3 toMob = c->getPosition() - camera.getRenderPosition();
-                        float d = toMob.length();
-                        if (d < cDist) {
-                            float dot = toMob.normalized().dot(camera.getForward());
-                            if (dot > 0.65f) {
-                                cDist = d;
-                                cmdTarget = c.get();
-                            }
-                        }
-                    }
-                }
-                if (!cmdTarget) {
-                    // Fallback to closest tamed companion
-                    float closestD = 35.0f;
-                    for (auto& c : creatures) {
-                        if (!c->getIsDead() && c->getIsTamed()) {
-                            float d = (c->getPosition() - player.getPosition()).length();
-                            if (d < closestD) {
-                                closestD = d;
-                                cmdTarget = c.get();
-                            }
-                        }
-                    }
-                }
-
-                if (cmdTarget) {
-                    cmdTarget->cycleStance();
-                    if (audio) audio->playSound(SoundID::ItemPickup, 1.30f, 1.25f);
-                    hud.addNotification("? " + cmdTarget->getDef().name + " set to [" + cmdTarget->getStanceName() + "] ?",
-                                       {0.25f, 0.95f, 1.0f, 1.0f});
-                } else {
-                    hud.addNotification("No tamed companion nearby to command!", {0.95f, 0.45f, 0.35f, 1.0f});
-                }
-            }
-
-            // Update ghost preview placement
-            if (buildingMgr->getIsBuilding()) {
-                buildingMgr->updateGhostPlacement(aimRay);
-            }
-        }
-
-        // Entity & Systems Updates
-        if (gameState == GameState::Playing) {
-            camera.setPosition(player.getPosition());
-            player.update(world.get(), audio.get(), dt);
-            inventoryMenu.update(dt); // Smelts items in furnace (Ocak)
-
-            // Spawn pending dropped items from Inventory Action Deck
-            if (!inventoryMenu.getPendingDrops().empty()) {
-                for (const auto& item : inventoryMenu.getPendingDrops()) {
-                    Vec3 dropPos = player.getPosition() + Vec3(0, 1.2f, 0) + camera.getForward() * 0.7f;
-                    Vec3 dropVel = camera.getForward() * 4.0f + Vec3(0, 2.0f, 0);
-                    droppedItems.push_back(std::make_unique<ItemEntity>(item, dropPos, dropVel));
-                }
-                inventoryMenu.clearPendingDrops();
-            }
-
-            buildingMgr->update(dt);
-        } else {
-            camera.setPosition(player.getPosition());
-        }
-
-        world->update(player.getPosition(), dt);
-        audio->update(dt);
-
-        // Update Network Client & Co-op Multiplayer Synchronization
-        netClient->update(dt);
-        chatUI.update(dt);
-
-        if (netClient->isConnected()) {
-            // Apply incoming remote block modifications to local world
-            Net::PacketBlockModify bmod;
-            while (netClient->popBlockModification(bmod)) {
-                world->setBlock(bmod.x, bmod.y, bmod.z, bmod.blockId);
-                if (audio) {
-                    audio->playSound(bmod.blockId == 0 ? SoundID::BlockBreak : SoundID::BlockPlace, 0.85f, 1.0f);
-                }
-            }
-
-            // Pop incoming chat messages into chatUI
-            Net::PacketChat inChat;
-            while (netClient->popChatMessage(inChat)) {
-                std::string sName = inChat.senderName;
-                Vec4 cColor = (inChat.senderId == 0) ? Vec4(1.0f, 0.85f, 0.35f, 1.0f) :
-                              (inChat.senderId == netClient->getLocalPlayerId()) ? Vec4(0.4f, 0.95f, 0.5f, 1.0f) : Vec4(0.45f, 0.82f, 1.0f, 1.0f);
-                chatUI.addMessage(sName, inChat.message, cColor);
-            }
-
-            // Transmit local player state to server at 20Hz
-            netClient->sendPlayerState(
-                player.getPosition(),
-                camera.getYaw(),
-                camera.getPitch(),
-                player.getIsSprinting(),
-                player.isAttacking(),
-                player.getIsCrouching(),
-                player.isGrounded(),
-                player.getHeldBlockId(),
-                player.getHealth(),
-                player.getMaxHealth()
-            );
-        }
-
-        // Update physical dropped items (physics, terrain bounce, player magnetism, pickup)
-        for (auto it = droppedItems.begin(); it != droppedItems.end(); ) {
-            (*it)->update(world.get(), player.getPosition(), dt);
-            if ((*it)->canPickup()) {
-                float pDist = ((*it)->getPosition() - (player.getPosition() + Vec3(0, 0.5f, 0))).length();
-                if (pDist < 1.35f) {
-                    const ItemStack& is = (*it)->getItem();
-                    uint32_t rem = player.getInventory().addItem(is.id, is.count);
-                    if (rem < is.count) {
-                        uint32_t picked = is.count - rem;
-                        const auto& iDef = ItemRegistry::get(is.id);
-                        hud.addNotification("+" + std::to_string(picked) + " " + iDef.name, iDef.color);
-                        audio->playSound(SoundID::ItemPickup, 1.15f, 0.85f);
-                        (*it)->markPickedUp();
-                    }
-                }
-            }
-            if ((*it)->isDead()) {
-                it = droppedItems.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        // Dynamic mob spawner (culls far/dead mobs, populates biomes)
-        mobSpawner.update(world.get(), player.getPosition(), creatures, dt);
-
-        // Update creature AI, companion combat, and hostile attack damage
-        for (auto& c : creatures) {
-            c->updateAI(world.get(), player.getPosition(), buildingMgr.get(), audio.get(), dt);
-
-            // Hostile creature melee attack against player
-            if (gameState == GameState::Playing && !c->getIsDead() && c->getDef().isHostile && c->isAttacking()) {
-                float dist = (c->getPosition() - player.getPosition()).length();
-                if (dist <= 2.5f) {
-                    player.takeDamage(c->getDef().attackDamage * dt * 0.75f, audio.get());
-
-                    // Alert nearby tamed companions to defend master
-                    for (auto& comp : creatures) {
-                        if (!comp->getIsDead() && comp->getIsTamed() && comp->getStance() == CompanionStance::Follow) {
-                            float cd = (comp->getPosition() - player.getPosition()).length();
-                            if (cd <= 25.0f) {
-                                comp->notifyMasterDamaged(c.get());
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Tamed companion melee attack against hostile combat target
-            if (gameState == GameState::Playing && !c->getIsDead() && c->getIsTamed() && c->isCompanionAttacking() && c->getCompanionTarget()) {
-                Creature* tgt = c->getCompanionTarget();
-                if (!tgt->getIsDead()) {
-                    float distToTgt = (c->getPosition() - tgt->getPosition()).length();
-                    if (distToTgt <= 2.6f) {
-                        Vec3 kb = (tgt->getPosition() - c->getPosition()).normalized() * 0.8f;
-                        tgt->takeDamage(c->getCompanionAttackDamage() * dt * 0.85f, kb, audio.get());
-                        if (tgt->getIsDead()) {
-                            c->gainCompanionXP(tgt->getDef().xpReward * 1.2f, audio.get());
-                            c->setCompanionTarget(nullptr);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Update physical capture spheres (ballistics, wobble stage checks, missed retrieval)
-        for (auto it = captureSpheres.begin(); it != captureSpheres.end();) {
-            (*it)->update(world.get(), creatures, audio.get(), dt, [&](const std::string& msg, const Vec4& col) {
-                hud.addNotification(msg, col);
-            });
-
-            if ((*it)->canPickup()) {
-                float pDist = ((*it)->getPosition() - (player.getPosition() + Vec3(0, 0.5f, 0))).length();
-                if (pDist < 1.4f) {
-                    uint16_t sId = (*it)->getSphereItemId();
-                    uint32_t rem = player.getInventory().addItem(sId, 1);
-                    if (rem == 0) {
-                        hud.addNotification("+1 " + ItemRegistry::get(sId).name + " (Retrieved)", {0.3f, 0.9f, 1.0f, 1.0f});
-                        if (audio) audio->playSound(SoundID::ItemPickup, 1.15f, 0.9f);
-                        (*it)->markPickedUp();
-                    }
-                }
-            }
-
-            if ((*it)->isDead()) {
-                it = captureSpheres.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        // ----------------------------------------------------
-        // OPENGL FRAME RENDERING
-        // ----------------------------------------------------
-        uint8_t curBiomeId = world->getBiomeAt(player.getPosition().x, player.getPosition().z);
-        const BiomeDef& curBiome = BiomeRegistry::get(curBiomeId);
-
-        // Determine target sky, fog color, and fog distance based on underwater, underlava, or biome + day/night state
-        Vec3 dynamicSky = world->getSkyColor(Vec3(curBiome.skyColor.x, curBiome.skyColor.y, curBiome.skyColor.z));
-        Vec3 dynamicFog = world->getFogColor(Vec3(curBiome.fogColor.x, curBiome.fogColor.y, curBiome.fogColor.z));
-        Vec4 targetSkyColor(dynamicSky.x, dynamicSky.y, dynamicSky.z, 1.0f);
-        Vec4 targetFogColor(dynamicFog.x, dynamicFog.y, dynamicFog.z, 1.0f);
-
-        float defaultMaxFogDist = static_cast<float>(config.graphics.renderDistance * CHUNK_X) * 0.95f;
-        float defaultFogEnd = std::max(60.0f, defaultMaxFogDist);
-        float targetFogEnd = defaultFogEnd;
-        float targetFogStart = defaultFogEnd * 0.45f;
-
-        if (player.getIsUnderLava()) {
-            targetSkyColor = Vec4(0.85f, 0.20f, 0.05f, 1.0f);
-            targetFogColor = Vec4(0.85f, 0.20f, 0.05f, 1.0f);
-            targetFogStart = 0.5f;
-            targetFogEnd = 8.0f;
-        } else if (player.getIsUnderwater()) {
-            targetSkyColor = Vec4(0.06f, 0.28f, 0.58f, 1.0f);
-            targetFogColor = Vec4(0.06f, 0.28f, 0.58f, 1.0f);
-            targetFogStart = 1.0f;
-            targetFogEnd = 28.0f;
-        }
-
-        // Atmospheric smoothing across biomes, day/night cycles, and fluids
-        static Vec4 smoothSkyColor(0.45f, 0.65f, 0.95f, 1.0f);
-        static Vec4 smoothFogColor(0.70f, 0.82f, 0.95f, 1.0f);
-        static float smoothFogStart = 30.0f;
-        static float smoothFogEnd = 85.0f;
-        static bool atmosphereInit = false;
-
-        if (!atmosphereInit) {
-            smoothSkyColor = targetSkyColor;
-            smoothFogColor = targetFogColor;
-            smoothFogStart = targetFogStart;
-            smoothFogEnd = targetFogEnd;
-            atmosphereInit = true;
-        } else {
-            // Responsive smooth transition when entering/leaving fluid or cycle changes
-            float blendSpeed = std::clamp(dt * (player.getIsUnderwater() || player.getIsUnderLava() ? 6.0f : 2.5f), 0.0f, 1.0f);
-            smoothSkyColor.x += (targetSkyColor.x - smoothSkyColor.x) * blendSpeed;
-            smoothSkyColor.y += (targetSkyColor.y - smoothSkyColor.y) * blendSpeed;
-            smoothSkyColor.z += (targetSkyColor.z - smoothSkyColor.z) * blendSpeed;
-
-            smoothFogColor.x += (targetFogColor.x - smoothFogColor.x) * blendSpeed;
-            smoothFogColor.y += (targetFogColor.y - smoothFogColor.y) * blendSpeed;
-            smoothFogColor.z += (targetFogColor.z - smoothFogColor.z) * blendSpeed;
-
-            smoothFogStart += (targetFogStart - smoothFogStart) * blendSpeed;
-            smoothFogEnd += (targetFogEnd - smoothFogEnd) * blendSpeed;
-        }
-
-        float fogStart = smoothFogStart;
-        float fogEnd = smoothFogEnd;
-
-
-        // Pipe 3D scene into Iris G-Buffers (or screen FBO 0 if Vanilla)
-        irisManager->resize(window->getWidth(), window->getHeight());
-        irisManager->beginScene();
-
-        // Clear screen with matching horizon fog color for 100% seamless transition
-        glClearColor(smoothFogColor.x, smoothFogColor.y, smoothFogColor.z, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // Calculate Camera Matrices (OpenGL Projection)
-        Mat4 viewMat = camera.getViewMatrix();
-        float fovRad = camera.getCurrentFOV() * DEG2RAD;
-        Mat4 projMat = Mat4::perspectiveGL(fovRad, window->getAspectRatio(), 0.1f, 1000.0f);
-        Mat4 viewProj = projMat * viewMat;
-        Mat4 modelIdentity = Mat4::identity();
-
-        Vec3 camEye = camera.getRenderPosition();
-        Vec3 sunDir = world->getSunDirection();
-
-        // 1. VOXEL PIPELINE (Terrain, Creatures, Placed Structures)
-        glPipeline->useVoxel();
-        glPipeline->setVoxelUniforms(viewProj, modelIdentity, sunDir, camEye,
-                                     config.graphics.ambientOcclusion,
-                                     smoothFogColor, fogStart, fogEnd,
-                                     config.graphics.fog,
-                                     totalTime, irisManager->getWavingFoliage());
-        textureAtlas->bind(0);
-
-        // Render World Chunks
-        world->render();
-
-        // Batch & Render Physical Dropped 3D Items
-        std::vector<VoxelVertex> itemVerts;
-        for (const auto& itm : droppedItems) {
-            itm->appendVertices(itemVerts, totalTime);
-        }
-        if (!itemVerts.empty()) {
-            itemBuffer.uploadVoxelData(itemVerts.data(), itemVerts.size() * sizeof(VoxelVertex),
-                                       static_cast<uint32_t>(itemVerts.size()), true);
-            itemBuffer.draw();
-        }
-
-        // Batch & Render Creatures, Physical Capture Spheres, and Remote Co-op Players
-        std::vector<VoxelVertex> creatureVerts;
-        for (const auto& c : creatures) {
-            c->appendModelVertices(creatureVerts, totalTime);
-        }
-        for (const auto& sp : captureSpheres) {
-            sp->appendModelVertices(creatureVerts, totalTime);
-        }
-        if (netClient->isConnected()) {
-            for (const auto& pair : netClient->getRemotePlayers()) {
-                pair.second.appendModelVertices(creatureVerts, totalTime);
-            }
-        }
-        if (!creatureVerts.empty()) {
-            creatureBuffer.uploadVoxelData(creatureVerts.data(), creatureVerts.size() * sizeof(VoxelVertex),
-                                           static_cast<uint32_t>(creatureVerts.size()), true);
-            creatureBuffer.draw();
-        }
-
-        // Render Placed Structures & Hologram Ghost Preview
-        buildingMgr->render(glPipeline.get(), viewProj, camEye, totalTime);
-
-        // 2. IRIS POST-PROCESSING PIPELINE (Composite God Rays & Final ACES Tone Mapping)
-        irisManager->endScene();
-        irisManager->renderCompositeAndFinal(sunDir, viewProj, totalTime);
-
-        // 3. UI PIPELINE (HUD, Menus & Settings)
-        uiRenderer->begin(window->getWidth(), window->getHeight());
-
-        if (gameState == GameState::MainMenu) {
-            if (multiplayerUI.isOpen()) {
-                multiplayerUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mClicked, totalTime);
-            } else {
-                mainMenu.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mClicked, totalTime);
-            }
-        } else {
-            // Render In-Game HUD & Mob Overhead Indicators only when gameplay is active (no menu open)
-            if (!anyMenuOpen) {
-                // Detect aimed wild creature for capture reticle and find active tamed companion
-                const ItemStack& curHeld = player.getInventory().getSlot(player.getSelectedHotbarIndex());
-                bool isHoldingSphere = (!curHeld.isEmpty() && (curHeld.id == 523 || curHeld.id == 526 || curHeld.id == 527));
-
-                Creature* aimedWildCreature = nullptr;
-                float aimCatchChance = 0.0f;
-                if (isHoldingSphere) {
-                    float closeTameDist = 22.0f;
-                    for (auto& c : creatures) {
-                        if (!c->getIsDead() && !c->getIsTamed() && !c->isInCapture()) {
-                            Vec3 toMob = c->getPosition() + Vec3(0, c->getDef().size.y * 0.5f, 0) - camera.getRenderPosition();
-                            float d = toMob.length();
-                            if (d < closeTameDist) {
-                                float dot = toMob.normalized().dot(camera.getForward());
-                                if (dot > 0.70f) {
-                                    closeTameDist = d;
-                                    aimedWildCreature = c.get();
-                                }
-                            }
-                        }
-                    }
-                    if (aimedWildCreature) {
-                        aimCatchChance = CaptureSphere::calculateCaptureChance(curHeld.id, *aimedWildCreature);
-                    }
-                }
-
-                // Active Companion detection (closest tamed creature within 35 blocks)
-                Creature* activeCompanion = nullptr;
-                float closestCompDist = 35.0f;
-                for (auto& c : creatures) {
-                    if (!c->getIsDead() && c->getIsTamed()) {
-                        float d = (c->getPosition() - player.getPosition()).length();
-                        if (d < closestCompDist) {
-                            closestCompDist = d;
-                            activeCompanion = c.get();
-                        }
-                    }
-                }
-
-                hud.render(window->getWidth(), window->getHeight(), player, *world, *buildingMgr, camera, viewProj, hasTargetedBlock, targetedBlockPos, timer.getFPS(), totalTime, dt, camera.getIsZooming(), miningProgress, currentMiningId, aimedWildCreature, aimCatchChance, activeCompanion);
-
-                // Render Floating Overhead Health Bars & Nameplates for Visible Nearby Creatures
-                Creature* closestBoss = nullptr;
-                float closestBossDist = 999.0f;
-
-                for (const auto& c : creatures) {
-                    if (c->getIsDead()) continue;
-
-                    float dist = (c->getPosition() - player.getPosition()).length();
-
-                    // Track nearby World Boss
-                    if (c->getDef().isBoss && dist < 50.0f) {
-                        if (dist < closestBossDist) {
-                            closestBossDist = dist;
-                            closestBoss = c.get();
-                        }
-                    }
-
-                    // Only draw floating overhead bar if within 26 blocks
-                    if (dist > 26.0f) continue;
-
-                    Vec3 overheadWorld = c->getPosition() + Vec3(0.0f, c->getDef().size.y + 0.45f, 0.0f);
-                    Vec4 clip = viewProj * Vec4(overheadWorld, 1.0f);
-                    if (clip.w > 0.15f) {
-                        float ndcX = clip.x / clip.w;
-                        float ndcY = clip.y / clip.w;
-                        float ndcZ = clip.z / clip.w;
-
-                        if (ndcZ >= -1.0f && ndcZ <= 1.0f && ndcX >= -1.1f && ndcX <= 1.1f && ndcY >= -1.1f && ndcY <= 1.1f) {
-                            float sx = (ndcX * 0.5f + 0.5f) * static_cast<float>(window->getWidth());
-                            float sy = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(window->getHeight());
-
-                            // Bar dimensions scaled smoothly by distance
-                            float scaleFactor = std::clamp(14.0f / (dist + 4.0f), 0.65f, 1.25f);
-                            float barW = 56.0f * scaleFactor;
-                            float barH = 5.0f * scaleFactor;
-                            float hpFrac = c->getHealth() / c->getMaxHealth();
-
-                            Vec4 fillColor = c->getDef().isHostile ? Vec4(0.9f, 0.22f, 0.22f, 0.92f) :
-                                             (c->getIsTamed() ? Vec4(0.15f, 0.80f, 1.0f, 0.95f) : Vec4(0.25f, 0.88f, 0.32f, 0.92f));
-
-                            uiRenderer->drawProgressBar(sx - barW * 0.5f, sy, barW, barH, hpFrac, fillColor, Vec4(0.1f, 0.1f, 0.1f, 0.75f));
-
-                            int mobLevel = c->getIsTamed() ? c->getCompanionLevel() : std::max(1, static_cast<int>(c->getMaxHealth() / 15.0f));
-                            std::string label = c->getIsTamed() ?
-                                                ("? " + c->getDef().name + " (Lv." + std::to_string(mobLevel) + ") [" + c->getStanceName() + "] ?") :
-                                                (c->getDef().name + " [Lv." + std::to_string(mobLevel) + "]");
-                            float textScale = (dist < 10.0f) ? 1.2f : 0.9f;
-                            Vec4 nameCol = c->getIsTamed() ? Vec4(0.35f, 0.95f, 1.0f, 1.0f) : Vec4(1.0f, 1.0f, 1.0f, 0.95f);
-                            uiRenderer->drawTextCentered(label, sx, sy - 8.0f * textScale - 2.0f, textScale, nameCol);
-                        }
-                    }
-                }
-
-                // Render Grand Boss Health Bar at top of screen if Boss is nearby
-                if (closestBoss) {
-                    float bW = 420.0f;
-                    float bH = 16.0f;
-                    float bX = (static_cast<float>(window->getWidth()) - bW) * 0.5f;
-                    float bY = 40.0f;
-                    float bossHpFrac = closestBoss->getHealth() / closestBoss->getMaxHealth();
-
-                    uiRenderer->drawRect(bX - 4.0f, bY - 22.0f, bW + 8.0f, bH + 28.0f, Vec4(0.05f, 0.05f, 0.08f, 0.85f));
-                    uiRenderer->drawRectOutline(bX - 4.0f, bY - 22.0f, bW + 8.0f, bH + 28.0f, 1.5f, Vec4(0.85f, 0.65f, 0.15f, 0.95f));
-
-                    int bossLevel = std::max(1, static_cast<int>(closestBoss->getMaxHealth() / 15.0f));
-                    std::string bossTitle = "[WORLD BOSS] " + closestBoss->getDef().name + " - Lv." + std::to_string(bossLevel);
-                    uiRenderer->drawTextCentered(bossTitle, bX + bW * 0.5f, bY - 18.0f, 1.6f, Vec4(1.0f, 0.82f, 0.25f, 1.0f));
-
-                    uiRenderer->drawProgressBar(bX, bY + 4.0f, bW, bH, bossHpFrac, Vec4(0.95f, 0.15f, 0.15f, 0.95f), Vec4(0.2f, 0.05f, 0.05f, 0.85f));
-
-                    std::string hpStr = std::to_string(static_cast<int>(closestBoss->getHealth())) + " / " + std::to_string(static_cast<int>(closestBoss->getMaxHealth()));
-                    uiRenderer->drawTextCentered(hpStr, bX + bW * 0.5f, bY + 6.0f, 1.2f, Vec4(1.0f, 1.0f, 1.0f, 0.95f));
-                }
-            }
-
-            // Render active menus
-            if (inventoryMenu.getIsOpen()) {
-                inventoryMenu.render(uiRenderer.get(), window->getWidth(), window->getHeight(), player, audio.get(), mx, my, mDown, mClicked, rClicked, shiftDown);
-            }
-            if (buildMenu.getIsOpen()) buildMenu.render(window->getWidth(), window->getHeight(), *buildingMgr);
-            if (blockCatalog.getIsOpen()) blockCatalog.render(window->getWidth(), window->getHeight(), player);
-            if (bestiary.getIsOpen()) bestiary.render(window->getWidth(), window->getHeight());
-            if (biomeCodex.getIsOpen()) biomeCodex.render(window->getWidth(), window->getHeight());
-
-            // Remote Players 3D Floating Nametags & Health Bars
-            if (netClient->isConnected()) {
-                float sw = static_cast<float>(window->getWidth());
-                float sh = static_cast<float>(window->getHeight());
-
-                for (const auto& pair : netClient->getRemotePlayers()) {
-                    const auto& rp = pair.second;
-                    Vec3 tagPos = rp.getNametagPosition();
-                    Vec3 toTag = tagPos - camera.getRenderPosition();
-                    float distToTag = toTag.length();
-
-                    // Only render if in front of camera and within 40 blocks
-                    if (distToTag < 40.0f && toTag.dot(camera.getForward()) > 0.1f) {
-                        Vec4 clip = viewProj * Vec4(tagPos.x, tagPos.y, tagPos.z, 1.0f);
-                        if (clip.w > 0.05f) {
-                            float ndcX = clip.x / clip.w;
-                            float ndcY = clip.y / clip.w;
-                            if (ndcX >= -1.1f && ndcX <= 1.1f && ndcY >= -1.1f && ndcY <= 1.1f) {
-                                float sx = (ndcX * 0.5f + 0.5f) * sw;
-                                float sy = (1.0f - (ndcY * 0.5f + 0.5f)) * sh;
-
-                                // Nametag background pill
-                                std::string tagText = rp.getName();
-                                float tagScale = 1.35f;
-                                float tagTextW = tagText.length() * 6.0f * tagScale;
-                                uiRenderer->drawRect(sx - tagTextW * 0.5f - 6.0f, sy - 4.0f, tagTextW + 12.0f, 18.0f, {0.05f, 0.08f, 0.12f, 0.75f});
-                                uiRenderer->drawRectOutline(sx - tagTextW * 0.5f - 6.0f, sy - 4.0f, tagTextW + 12.0f, 18.0f, 1.0f, {0.3f, 0.7f, 1.0f, 0.7f});
-                                uiRenderer->drawTextCentered(tagText, sx, sy + 1.0f, tagScale, {1.0f, 0.95f, 0.45f, 1.0f});
-
-                                // Health Bar under Nametag
-                                float barW = std::max(40.0f, tagTextW);
-                                float barH = 4.0f;
-                                float hpPct = std::max(0.0f, std::min(1.0f, rp.getHealth() / std::max(1.0f, rp.getMaxHealth())));
-                                uiRenderer->drawRect(sx - barW * 0.5f, sy + 16.0f, barW, barH, {0.1f, 0.1f, 0.1f, 0.8f});
-                                uiRenderer->drawRect(sx - barW * 0.5f, sy + 16.0f, barW * hpPct, barH, {0.25f, 0.85f, 0.35f, 0.95f});
-                            }
-                        }
-                    }
-                }
-
-                // Co-op Realm Top Status Pill
-                size_t totalPlayers = netClient->getRemotePlayers().size() + 1;
-                std::string coopBadge = "CO-OP REALM: " + std::to_string(totalPlayers) + " PLAYERS  |  PING: " + std::to_string(static_cast<int>(netClient->getPingMs())) + "ms";
-                uiRenderer->drawRect(20.0f, 20.0f, coopBadge.length() * 6.0f * 1.35f + 16.0f, 22.0f, {0.05f, 0.10f, 0.18f, 0.85f});
-                uiRenderer->drawRectOutline(20.0f, 20.0f, coopBadge.length() * 6.0f * 1.35f + 16.0f, 22.0f, 1.0f, {0.3f, 0.8f, 1.0f, 0.8f});
-                uiRenderer->drawText(coopBadge, 28.0f, 24.0f, 1.35f, {0.4f, 0.9f, 1.0f, 1.0f});
-            }
-
-            // In-Game Chat System
-            chatUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), totalTime);
-        }
-
-        // Render Settings Menu
-        if (settingsMenu.isOpen()) {
-            settingsMenu.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mDown, mClicked);
-        }
-
-        // Render Iris Shaderpacks Menu on topmost layer
-        if (irisShaderUI.isOpen()) {
-            irisShaderUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mDown, mClicked);
-        }
-
-        // Render Update Calendar & Development Roadmap Menu
-        if (updateCalendar.getIsOpen()) {
-            updateCalendar.render(window->getWidth(), window->getHeight(), mx, my, mDown, mClicked, totalTime);
-        }
-
-        // Render Skill Tree & RPG Abilities Menu
-        if (skillTreeUI.isOpen()) {
-            skillTreeUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), player, audio.get(), mx, my, mClicked, totalTime);
-        }
-
-        // Render Account Login & Profile Modal on topmost UI layer
-        if (loginUI.isOpen()) {
-            loginUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mDown, mClicked, totalTime);
-        }
-
-        uiRenderer->end(glPipeline.get());
-
-        // Present OpenGL frame
-        glContext->swapBuffers();
-    }
-
-    std::cout << "Chronicles of Aetheria exited cleanly. Goodbye!" << std::endl;
-    return 0;
-}
+# Chronicles of Aetheria
+
+[![Release](https://img.shields.io/github/v/release/alpdemironder/Chronicles-of-Aetheria?color=00d2ff&label=Release)](https://github.com/alpdemironder/Chronicles-of-Aetheria/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/)
+[![OpenGL 3.3](https://img.shields.io/badge/OpenGL-3.3%20Core-green.svg)](https://www.opengl.org/)
+
+An advanced **C++17 OpenGL 3.3 Core Profile Voxel RPG Sandbox** that blends the infinite procedural exploration of Minecraft with the tactical companion taming and modular freeform base building of Palworld.
+
+---
+
+## 📸 Gameplay Gallery
+
+![Procedural World Vista with Iris Shaders](docs/screenshots/world_vista.jpg)
+*Lush procedural biomes featuring cherry blossom groves, reflective river systems, and Iris shader atmospheric lighting.*
+
+![Palworld-Style Creature Taming](docs/screenshots/creature_taming.jpg)
+*Dynamic projectile capture mechanics with ballistic arc physics, real-time catch probability reticle, and mythical creature encounters.*
+
+![Modular Base Building & Companion Camp](docs/screenshots/base_building.jpg)
+*Modular multi-tier architectural construction, crafting workshops, and loyal tamed companion wolves guarding the base at golden hour.*
+
+---
+
+## 🌟 Key Features
+
+### 1. 🌍 Procedural Voxel Engine & Worldgen
+- **365+ Block IDs** with distinct material properties, step heights, and mining speeds.
+- **35 Unique Biomes**:
+  - *Temperate*: Lush Meadows, Autumnal Woodlands, Birch Glades.
+  - *Arid*: Dune Sea, Red Rock Mesas, Oasis.
+  - *Cold*: Frosted Taiga, Glacial Spikes, Alpine Peaks.
+  - *Tropical*: Dense Jungle, Bamboo Sanctuary, Mangrove Swamps.
+  - *Nocturnal & Volcanic*: Magma Calderas, Obsidian Ridges.
+  - *Celestial*: Void Peaks, Ethereal Spires.
+- **3D Multi-Octave Caverns**: Subterranean cave systems, winding tunnels, aquifer chambers, and molten magma pools with fluid flow physics.
+
+### 2. 🔮 Creature Ecosystem & Palworld-Style Taming System
+- **Farm Animals First (Docile Wildlife & Livestock)**:
+  - **Dairy Cow**: White with black patched coat, curved ivory horns, floppy ears, udder, drops Tanned Leather.
+  - **Highland Sheep**: Fluffy wool fleece coat, distinct dark face and ears, drops Wool.
+  - **Farm Pig**: Rounded pink body, 4 trotters, protruding 3D snout with nostrils, curly tail, drops Savory Feast Meat.
+  - **Farm Chicken**: Plump feathered body, flapping wings, yellow beak, bright red comb & wattle, drops Feathers.
+  - **Wild Steed (Horse)**: Muscular equine torso, arched neck, dark crest mane, tall hooved legs, flowing tail, rapid 6.5 m/s stride.
+- **Monsters (Hostile Foes & Night Terrors)**:
+  - **Draugr Zombie**: Decaying necrotic green skin, forward-extended reaching arms, dark sunken eyes, drops Iron Ingots.
+  - **Skeleton Archer**: Ivory bone structure, exposed ribcage, hollow sockets, wields a recurve bow, drops Bone Meal.
+  - **Cave Spider**: Dedicated 8-legged articulated arachnid model with ripple-wave crawling gait, 6 glowing ruby eyes, venomous pedipalp fangs, drops Silk Rope.
+  - **Crypt Ghoul**: Gaunt ashen-purple predatory fiend, hunched feral posture, elongated arms with razor black talons, protruding spinal bone ridges, glowing amber eyes.
+  - **Goblin Raider**: Short green skirmisher, large pointed bat ears, upward underbite tusks, wields a jagged iron dagger, drops Gold Ingots.
+- **Physical 3D Capture Sphere Projectiles**:
+  - Pal Sphere (1.0x capture power)
+  - Mega Sphere (2.0x capture power)
+  - Giga Sphere (3.5x capture power)
+  - Arcing throw physics with parabolic gravity and drag. Missed spheres land safely and can be recovered by walking over them.
+- **3-Stage Wobble Capture Sequence**:
+  - Capturing weakened wild creatures pulls them into a physical 3D sphere.
+  - 3 successive tension-filled wobble checks ($t = 0.8\text{s}$, $1.6\text{s}$, $2.4\text{s}$) with audio cues and rolling animations.
+  - Capture probability dynamically scales with remaining health ($1.0 - 0.72 \times \text{HP}\%$).
+- **Dynamic Capture Reticle**: Aiming at wild creatures displays real-time calculated catch chance (`[ CATCH CHANCE: XX% ]`) with color-coded feedback.
+- **Companion Stance Management (`[V]` Key)**:
+  - `[FOLLOW & DEFEND]`: Follows master, teleports if stranded, and attacks hostile enemies.
+  - `[STAY / GUARD]`: Holds position and defends a 4-block perimeter.
+  - `[WORK AT BASE]`: Patrols and works inside player base camp boundaries.
+- **Companion Progression**: Earns XP from monster defeats, levels up, increases Max HP and Attack Damage, and regenerates health out of combat.
+- **Companion HUD Deck**: Displays companion level, HP bar, active stance, and overhead crown badges.
+
+### 3. 🏰 Palworld Freeform Modular Building & Furniture Catalog
+- **128 Modular Pieces with Authentic Textures**:
+  - Expanded catalog of 128 architectural and furniture pieces across all **16 Tree Species** (Oak, Birch, Spruce, Pine, Jungle, Acacia, Dark Oak, Mangrove, Cherry, Maple, Willow, Fungal, Petrified, Bamboo, Palm, Astral):
+    - **Stairs (Merdiven)**: 2-step stepped voxel geometry matching each wood's grain and color.
+    - **Trapdoors (Tuzak Kapısı)**: Horizontal slatted hatch plate with reinforced cross battens.
+    - **Slabs (Basamak)**: Half-height bottom floor/walkway slabs.
+    - **Side Slabs (Yan Basamak)**: Half-width vertical partition slabs for windows, pillars, and arches.
+    - **Chairs (Sandalye)**: 4-legged dining/hall chairs with seat cushions and backrest posts & splats.
+    - **Benches (Bank)**: 6-legged wide tavern/garden benches with full backrest panels and side armrests.
+    - **Tables (Masa)**: Sturdy 4-corner legged tables with under-table support aprons and polished tabletop slabs.
+  - Core base camp structures: Palbox Camp Core, Primitive & Sphere Workbenches, Smelting Furnace, Straw Creature Beds, Feed Boxes, and Storage Chests.
+- **Interactive Hologram Ghost Preview & 3D Rotation**:
+  - Real-time holographic ghost preview showing full composite 3D models (chairs, benches, tables, stairs, etc.) in translucent cyan/gold.
+  - 90° Cardinal piece rotation (`[R]`) baked directly into placed structures.
+  - 0.5-meter fine grid snapping for interior furniture layout.
+  - Dismantle mode (`[X]`) with 100% material recycling refunded to player inventory.
+- **Modern Build Menu Navigation (`[B]`)**:
+  - Smooth mouse wheel scrolling and category tab clicking.
+  - Quick wood species browsing (`[Left/Right]` or `[A/D]` jump by 4 items, PageUp/PageDown).
+  - Clean wood species badges (`[Oak]`, `[Cherry]`, `[Astral]`) and real-time piece/page counters.
+
+### 4. ⚔️ Minecraft 1.9+ PvP Combat Mechanics
+- **Attack Speed Cooldowns & Recharge Meter**: Weapon-specific recovery speeds (Iron Broadsword, Battleaxes, Daggers) with visual HUD attack charge indicator beneath crosshair.
+- **Quadratic Scaling**: Quick click spamming deals minimal damage; charged strikes deliver full damage and heavy knockback.
+- **Critical Strikes**: Striking opponents during downward fall grants $+50\%$ critical bonus damage with crisp particle and audio feedback.
+
+### 5. ☀️ 12-Minute Day/Night Cycle & Immersive Iris Shaders
+- **Active Complementary Reimagined Shaders by Default**: Dual G-Buffer deferred pipeline running `Complementary_Reimagined` out of the box with cinematic post-processing.
+- **24-Step Volumetric God Rays**: Dither-jittered crepuscular light shafts streaming through canopies, mountains, and architectural structures with zero banding.
+- **Depth-Aware Screen-Space Ambient Occlusion (SSAO)**: 12-tap randomized golden spiral kernel providing rich contact shadows in corners and eaves.
+- **Water Surface Screen-Space Reflections (SSR) & Caustics**: Dynamic normal perturbation with animated water ripples and Fresnel sky reflections.
+- **Atmospheric Celestial Lighting**: Dynamic sunlight color modulation (warm amber sunrise/sunset vs crisp midday vs cool nocturnal moonlight) and Mie solar forward-scattering horizon glow.
+- **Subsurface Foliage Scattering**: Backlit tree leaves glow with radiant green chlorophyll translucency when viewing canopies against the sun.
+- **Cinematic ACES Filmic Tonemapping**: True highlight rolloff and subtle optical lens chromatic aberration.
+- **Iris In-Game Shader Menu (`[O]`)**: Live hot-swapping between shaderpacks and toggleable shader features.
+
+### 6. 🎨 Authentic Minecraft Textures & Sub-Texel Anti-Aliasing
+- **Modern Minecraft (1.17+ Jappa) Signature Ore Patterns**: Tailored pixel-art shapes for Coal (chunky angular spots), Copper (teardrop nuggets with oxidized turquoise patina), Iron (iconic diagonal stepped streaks), Gold (scattered sparkling nuggets), Redstone (dense ruby crystal cluster), Lapis Lazuli (jagged ultramarine vein with gold pyrite flecks), Diamond (brilliant cyan crystal clusters with white sparkles), and Emerald (hexagonal cut gem).
+- **Stone Bricks Suite (IDs 241 to 244)**: Classic 2x2 running bond ashlar stone bricks with upper/left highlight bevels and lower/right shadow seams, plus Mossy, Cracked, and Chiseled variants.
+- **Geological & Dimensional Blocks**: Conchoidal fractured Obsidian and glowing Crying Obsidian with weeping magenta tears, craggy porous Netherrack, and cratered End Stone.
+- **Luminaries & Utilities**: Clustered incandescent Glowstone, aquamarine framed Sea Lanterns, Nether Fortress Bricks, and incandescent Magma tiles.
+- **Hardware Mipmapping & 16x Anisotropic Filtering**: Generates full trilinear mipmap chains on `GL_TEXTURE_2D_ARRAY` (`GL_LINEAR_MIPMAP_LINEAR`) with up to 16x anisotropic filtering, completely eliminating distant pixel swimming and moiré patterns.
+- **Analytic Sub-Texel Anti-Aliasing (`gl_voxel.frag`)**: Custom GPU shader algorithm computes continuous screen-space UV derivatives (`fwidth`, `textureGrad`) to keep voxel pixel art crisp and razor-sharp up close while anti-aliasing texel boundaries smoothly over 1 screen pixel.
+
+---
+
+## 🚀 Building & Running
+
+### Requirements
+- **OS**: Windows 10/11 (64-bit)
+- **Compiler**: GCC 9+ (MinGW-w64) or MSVC with C++17 support
+- **Graphics**: OpenGL 3.3 Core Profile compatible GPU
+
+### Compile from Source
+```cmd
+build.bat
+```
+The executable will be built directly to `bin\AetheriaRPG.exe`.
+
+### Controls
+| Key | Action |
+|-----|--------|
+| **W, A, S, D** | Move / Strafe |
+| **Space** | Jump / Swim upward / **Double Jump (Havada İkinci Zıplama)** |
+| **Left Shift** | Sprint |
+| **Left Ctrl** | Sneak |
+| **R** | Dash / Rotate building piece |
+| **C** | Telescopic Zoom (3.1x) |
+| **Left Click** | Attack / Mine Voxel |
+| **Right Click** | Open Chest / Throw Pal Sphere / Place Block / Use Consumable |
+| **E / Tab / I** | Open Inventory & Crafting Table |
+| **K** | **Yetenek & Büyü Ağacı (Skill Tree & SP)** |
+| **Q / G** | **Alev Topu Büyüsü (Fireball Spell)** / Shift+Q Drop Item |
+| **Z** | **Buz Fırtınası Büyüsü (Frost Nova Spell)** |
+| **H** | **Kutsal Şifa Büyüsü (Holy Heal Spell)** |
+| **V** | Cycle Companion Stance (`Follow` -> `Stay` -> `Work`) |
+| **F** | Hammer Blueprint Scaffold |
+| **B** | Palworld Building Menu |
+| **T / Enter** | Open In-Game Co-op Chat |
+| **X** | Dismantle Mode |
+| **O** | Iris Shaderpack Menu |
+| **Esc** | Pause / Settings Menu |
+
+---
+
+## 🔮 Yetenek Ağacı & Büyüler (Skill Tree & Active Spells)
+
+Her seviye atlandığında kazanılan **Yetenek Puanları (SP - Skill Points)** ile harcanabilir aktif büyüler ve pasif güçlendirmeler (`[K]` Tuşu):
+- **Çift Zıplama (Double Jump)**: Havada `[SPACE]` tuşuna basarak ikinci kez havada zıplama yeteneği (15 Stamina).
+- **Alev Topu (Fireball - `[Q]` / `[G]`)**: Hedefe doğru patlayıcı alev topu fırlatır (45 Alan Hasarı + Düşmanları Geri İtme, 25 Mana).
+- **Buz Fırtınası (Frost Nova - `[Z]`)**: Çevredeki 8.5 blok içindeki tüm canavarları dondurur ve yavaşlatır (30 Büyü Hasarı, 30 Mana).
+- **Kutsal Şifa (Holy Heal - `[H]`)**: Kutsal ışık enerjisiyle anında +40 HP can yeniler (40 Mana).
+- **Pasif Yetenekler**:
+  - **Çelik Deri (Iron Skin)**: Seviye başına +4 Zırh/Defans kazandırır.
+  - **Hızlı İyileşme (Regeneration)**: Her 2 saniyede bir pasif olarak +1.5 Can yeniler.
+  - **Mana Akışı (Mana Surge)**: +30 Max Mana ve +40% Mana dolum hızı artışı.
+  - **Rüzgar Adımları (Swiftness)**: +15% Koşu ve depar hareket hızı artışı.
+  - **Savaş Öfkesi (Berserker)**: Seviye başına +12% Silah ve büyü saldırı hasarı artışı.
+
+---
+
+## 🧝 Karakter Irkları & Özel Pasifler (RPG Playable Races)
+
+Karakter giriş ekranında seçilebilen 5 benzersiz RPG ırkı ve oynanış özellikleri:
+1. **İnsan (Human)**:
+   - *Dengeli Uyum*: Her seviye atlandığında diğer ırklardan farklı olarak **+2 Yetenek Puanı (SP)** kazanır.
+2. **Elf**:
+   - *Kadim Büyücü*: **+50% Daha Hızlı Mana Yenilenmesi**, +20 Max Mana ve büyü/ok saldırılarında ekstra güç.
+3. **İblis (Demon)**:
+   - *Cehennem Ateşi*: **Lav ve Ateş Bağışıklığı (%100 Lava & Fire Immunity)**! Lavda yürüyebilir, yüzebilir ve yanmaz. +8 Karanlık Ateş hasarı.
+4. **Vampir (Vampire)**:
+   - *Gece Avcısı*: **%20 Can Çalma (Life Steal)**! Düşmanlara ve canavarlara vurulan her darbenin %20'si anında oyuncuya can (HP) olarak geri döner.
+5. **Slime**:
+   - *Elastik Gövde*: **Düşme Hasarı Almaz (No Fall Damage)**! Yere yüksekten çarpınca elastik zıplama fiziği (Bounce) ve +25% Zıplama yüksekliği.
+
+---
+
+## 📦 Ahşap Sandık & Konteyner Arayüzü (Wooden Storage Chests)
+
+- **3x3 Çalışma Masası Reçetesi**: Herhangi 8 adet ahşap tahta ile ortası boş çerçeve şeklinde dizilerek üretilir (Block ID 337 / 333). Hızlı üretim menüsünde de yer alır.
+- **27 Slotlu Konteyner Depolama GUI'si**:
+  - Dünyaya yerleştirilen sandığa (veya Palworld `Storage_Chest` yapısına) sağ tıklandığında 27 slotluk depolama arayüzü açılır.
+  - **Shift + Sol Tık (Hızlı Transfer)**: Sandık ile çanta arasında eşyaları tek tıkla aktarır.
+  - **Sağ Tık**: Eşya destesini ikiye böler veya tek tek yerleştirir.
+  - **Hızlı Butonlar**:
+    - `[HEPSİNİ AL]`: Sandıktaki tüm eşyaları oyuncunun çantasına aktarır.
+    - `[HEPSİNİ KOY]`: Oyuncunun çantasındaki eşyaları sandığa depolar.
+    - `[HIZLI YIĞ]`: Sandıkta bulunan eşyaları çantanızdan otomatik olarak birleştirir ve istifler.
+- **Kırılınca Eşyaları Düşürme**: Sandık kırıldığında veya kazıldığında içindeki tüm eşyalar fiziksel 3D eşya olarak dünyaya saçılır.
+
+---
+
+## 👤 Account Login & Character Profile (Hesap Girişi)
+
+Chronicles of Aetheria features a dedicated **Account Login & Profile Screen** (`> HESAP GIRISI & PROFIL <`):
+- **Custom Player Nickname**: Type and set your custom player name with full keyboard typing, backspace editing, and real-time cursor blinking.
+- **Random Name Generator (`RASTGELE`)**: Generates cool adventure and fantasy callsigs with 1 click.
+- **RPG Character Class Archetypes**:
+  - **Savaşçı (Warrior)**: +20 Max HP bonus, +5 Sword Melee Power.
+  - **Büyücü (Mage)**: +50 Max Mana bonus, Arcane Affinity.
+  - **Okçu (Ranger)**: +15% Sprint Speed bonus, Rapid Archery.
+  - **Paladin (Paladin)**: +10 Base Armor Defense, Holy Resilience.
+- **Quick Account Switching**: Saved profile chips to switch instantly between previous profiles.
+- **Remember Me (`Beni Hatırla`)**: Automatically stores and logs into your profile on launch.
+- **Full In-Game Synchronization**: Your chosen name appears in the HUD status deck, in-game chat messages, multiplayer nametags, and the main menu top badge (`[ HESAP: <Isim> ]`).
+
+---
+
+## 🌐 Co-op Multiplayer & Worlds Hub (Çok Oyunculu)
+
+Chronicles of Aetheria features a full-featured tabbed **Multiplayer & Worlds Hub** (`> MULTIPLAYER (ÇOK OYUNCULU) <`):
+- **📑 Tab 1: Kendi Dünyalarım (My Worlds)**:
+  - Select from your local procedural worlds with details on World Name, Seed, Game Mode, and Port.
+  - **Host & Play (`DUNYAYI BASLAT`)**: Spin up a local server and host your world for friends across LAN or VPN (Hamachi/Tailscale/Radmin) with one click!
+  - **Play Solo (`TEK BASINA OYNA`)**: Instantly enter and explore the selected world offline.
+  - **Create World (`+ YENI DUNYA`)**: Procedurally generate fresh worlds with custom World Name, Seed generator (including Randomizer), and Port assignment.
+- **🌐 Tab 2: Diğer Dünyalar (Other Worlds & Servers)**:
+  - Browse saved remote and community servers with real-time ping latency readouts (ms) and online beacons.
+  - **Direct Connect (`DOGRUDAN BAGLANTI`)**: Join any LAN or remote world directly by typing the target `IP:Port`.
+  - **Add Server (`+ SUNUCU EKLE`)**: Save your friends' servers to your persistent multiplayer server list.
+- **👤 Tab 3: Oyuncu Profili (Player Profile)**:
+  - Customize your multiplayer Nickname/Callsign and view connection diagnostics.
+- **Dedicated Headless Server**: Run `run_server.bat` (or `bin\AetheriaServer.exe --port 25565 --seed 133742`) to host a high-performance 24/7 realm with console commands (`/list`, `/say`, `/kick`, `/stop`).
+- **Synchronized Gameplay**:
+  - Real-time block placement and destruction synchronization with delta world history.
+  - 3D character avatars, held weapons, and floating nametags with dynamic health bars.
+  - In-game chat system (`[T]` / `[Enter]`) with channel colors and automatic message fade-out.
+  - For full hosting and network setup instructions, see [docs/MULTIPLAYER_GUIDE.md](docs/MULTIPLAYER_GUIDE.md).
+
+---
+
+## ⛏️ Otantik Minecraft Deneyimi & Görsel Yenileme (Minecraft Vanilla Remaster)
+
+Chronicles of Aetheria, Minecraft'ın nostaljik görsel estetiğini ve temel mekaniklerini baştan sona birebir yansıtacak şekilde yenilenmiştir:
+
+### 1. 🎛️ Vanilla Minecraft HUD & Göstergeler
+- **9 Yuvalı Taş Hotbar**:
+  - Ekranın alt ortasında 9 yuvalı taş grisi (`#8B8B8B` / `#373737` / `#FFFFFF`), içe gömülü yuvalar.
+  - **3D Beyaz Çerçeveli Seçili Yuva**: Seçilen yuvanın dışına 2-3 piksel taşan, kabartmalı klasik Minecraft çerçevesi.
+  - **Eşya Sayıları**: Sağ alt köşede beyaz piksel fontu ve siyah gölgeli (+1, +1 offset) klasik sayı gösterimi.
+  - **Action-Bar Tooltip**: Yuva değiştirildiğinde ekranın ortasında süzülen ve 2.5 saniyede sönen eşya adı yazısı.
+- **Piksel Kalpler (Can)**:
+  - Hotbarın sol üstünde 10 adet Minecraft piksel kalbi (koyu kırmızı çerçeve, parlak kırmızı dolgu, sol üstte 1x1 beyaz parlama pikseli, yarım kalp ve boş kap desteği).
+  - Can %20'nin altına indiğinde kalplerin panikle zıplama/titreme animasyonu ve hasar anında beyaz/sarı parlama efekti.
+- **Piksel Tavuk Butları (Açlık & Kondisyon)**:
+  - Hotbarın sağ üstünde 10 adet kızarmış tavuk budu (beyaz kemik ucu, leziz kahverengi et, yarım but desteği).
+  - Kondisyon düştüğünde titreme animasyonu.
+- **Zırh Göğüslükleri & Oksijen Baloncukları**:
+  - Kalplerin üstünde kuşanılan zırh defansına göre dolan gümüş göğüslük ikonları.
+  - Su altına girildiğinde (`underwater`) tavuk butlarının üzerinde beliren 10 adet mavi oksijen baloncuk göstergesi.
+- **Kireç Yeşili XP Barı & Minecraft Seviye Numarası**:
+  - Hotbarın tam üstünü kaplayan koyu yeşil çerçeveli ve parlak neon kireç yeşili (`#80FF20`) deneyim barı.
+  - Üzerinde Minecraft dikey bölme çentikleri.
+  - XP çubuğunun tam ortasında kalın, yeşil renkli ve koyu gölgeli **Minecraft Seviye Numarası** (örn. `12`).
+- **15x15 Piksel Klasik Nişangah**:
+  - Ortası delik, ters renkli/yarı saydam klasik `+` nişangahı ve altında 1.9+ saldırı dolum şarj göstergesi.
+
+### 2. 🔲 3D Hedeflenen Blok Tel Çerçevesi & Çatlama Aşamaları (0-9)
+- Oyuncu 5.5 blok menzilde herhangi bir bloğa baktığında, o bloğu çevreleyen **12 kenarlı ince siyah tel çerçeve (Bounding Box Outline)** çizilir.
+- Blok kazılırken bloğun yüzeylerinde aşama aşama çatlayan **Minecraft çatlama animasyonu (Destroy Stages 0-9)** gösterilir.
+
+### 3. 🖐️ Birinci Şahıs Hareketli Steve Kolu & Alet Görünümü (Viewmodel)
+- Birinci şahıs kamerasında ekranın sağ alt köşesinde:
+  - Boş elde: Steve'in pikselli turkuaz kolluklu ve ten rengi yumruğu.
+  - Alet tutarken: Çapraz duran 3D alet modeli (Kılıç, Kazma, Balta, Kürek).
+  - Blok tutarken: Elde tutulan küçük 3D izometrik küp blok.
+  - Yürürken doğal el sallanma / bobbing hareketi.
+  - Vururken veya blok kırarken/koyarken Minecraft'ın karakteristik **aşağı yay çizerek inen el sallama animasyonu**.
+
+### 4. 📊 Minecraft Java F3 Debug Ekranı & F1 HUD Gizleme
+- **`[F3]` Tuşu**: Minecraft Java Edition tarzı F3 hata ayıklama panelini açar/kapatır:
+  - *Sol Taraf*: Sürüm, FPS ve kare süresi, XYZ kesin koordinatlar, Block koordinatları, Chunk bilgisi, Facing (Kuzey/Güney/Doğu/Batı ve açılar), Biyom, Işık seviyesi ve Hedeflenen blok bilgisi.
+  - *Sağ Taraf*: OpenGL 3.3 Core Profile, GPU marka/model, bellek kullanımı, ekran çözünürlüğü.
+- **`[F1]` Tuşu**: Sinematik ekran görüntüleri ve videolar için tüm HUD arayüzünü tek tuşla gizler/gösterir.
+
+### 5. 🧱 Keskin 16x16 Piksel Dokuları (Nearest-Neighbor Filter)
+- `GL_TEXTURE_MAG_FILTER` parametresi `GL_NEAREST` yapılarak bloklara yakından bakıldığında bulanıklaşma tamamen kaldırılmış, kristal netliğinde nostaljik 16x16 Minecraft piksel grafikleri elde edilmiştir.
+
+---
+
+## 📜 License
+Distributed under the MIT License. See `LICENSE` for details.
