@@ -9,7 +9,8 @@
 namespace Aetheria {
 
 World::World(uint32_t seed)
-    : generator(seed),
+    : worldSeed(seed),
+      generator(seed),
       tempNoise(seed + 101),
       moistureNoise(seed + 202),
       elevNoise(seed) {

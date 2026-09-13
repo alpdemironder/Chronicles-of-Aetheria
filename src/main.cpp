@@ -1,3 +1,4 @@
+#include <winsock2.h>
 #include <windows.h>
 #include <iostream>
 #include <vector>
@@ -45,6 +46,12 @@
 #include "ui/IrisShaderUI.hpp"
 #include "ui/UpdateCalendarUI.hpp"
 #include "ui/MainMenuUI.hpp"
+#include "ui/MultiplayerUI.hpp"
+#include "ui/ChatUI.hpp"
+#include "network/NetworkProtocol.hpp"
+#include "network/Client.hpp"
+#include "network/Server.hpp"
+#include "entities/RemotePlayer.hpp"
 
 using namespace Aetheria;
 
@@ -158,6 +165,36 @@ int main(int argc, char* argv[]) {
     SettingsUI settingsMenu;
     UpdateCalendarUI updateCalendar(uiRenderer.get());
 
+    // Co-op Multiplayer & Server Subsystems
+    Net::AetheriaServer localServer;
+    auto netClient = std::make_unique<Net::NetworkClient>();
+    MultiplayerUI multiplayerUI(netClient.get(), &localServer);
+    ChatUI chatUI;
+
+    window->setCharCallback([&](char c) {
+        if (multiplayerUI.isOpen()) {
+            multiplayerUI.onCharInput(c);
+        } else if (chatUI.isOpen()) {
+            chatUI.onCharInput(c);
+        }
+    });
+
+    window->setKeyCallback([&](int key) {
+        if (multiplayerUI.isOpen()) {
+            multiplayerUI.onKeyDown(key);
+        } else if (chatUI.isOpen()) {
+            chatUI.onKeyDown(key);
+        }
+    });
+
+    chatUI.setOnSendMessage([&](const std::string& msg) {
+        if (netClient->isConnected()) {
+            netClient->sendChat(msg);
+        } else {
+            chatUI.addMessage("Local", msg, {0.75f, 0.9f, 1.0f, 1.0f});
+        }
+    });
+
     settingsMenu.setOpenIrisCallback([&]() {
         settingsMenu.setOpen(false);
         irisShaderUI.setOpen(true);
@@ -171,6 +208,34 @@ int main(int argc, char* argv[]) {
         gameState = GameState::Playing;
         window->setCursorLocked(true);
     });
+    mainMenu.setOnOpenMultiplayer([&]() {
+        multiplayerUI.setOpen(true);
+    });
+    multiplayerUI.setOnStartGame([&]() {
+        gameState = GameState::Playing;
+        window->setCursorLocked(true);
+    });
+    multiplayerUI.setOnStartGameConfig([&](uint32_t seed, bool isHost, uint16_t port, const std::string& connectIp) {
+        if (!isHost && connectIp.empty()) {
+            if (netClient->isConnected()) netClient->disconnect();
+            if (localServer.isRunning()) localServer.stopAsync();
+        }
+        if (seed != 0 && world && world->getSeed() != seed) {
+            world = std::make_unique<World>(seed);
+            buildingMgr = std::make_unique<BuildingManager>(world.get(), audio.get());
+            int spawnY = world->getHighestBlock(0, 0);
+            player.setPosition(Vec3(0.0f, static_cast<float>(spawnY) + 1.8f, 0.0f));
+            camera.setPosition(player.getPosition());
+            creatures.clear();
+            mobSpawner.spawnInitial(world.get(), player.getPosition(), creatures);
+        }
+        gameState = GameState::Playing;
+        window->setCursorLocked(true);
+    });
+    multiplayerUI.setOnBackToMenu([&]() {
+        multiplayerUI.setOpen(false);
+    });
+
     mainMenu.setOnOpenCalendar([&]() {
         updateCalendar.open();
     });
@@ -185,6 +250,12 @@ int main(int argc, char* argv[]) {
     });
 
     settingsMenu.setQuitToTitleCallback([&]() {
+        if (netClient->isConnected()) {
+            netClient->disconnect();
+        }
+        if (localServer.isRunning()) {
+            localServer.stopAsync();
+        }
         gameState = GameState::MainMenu;
         window->setCursorLocked(false);
     });
@@ -219,7 +290,11 @@ int main(int argc, char* argv[]) {
         // ----------------------------------------------------
         // ESC key: Priority close for any active menu, or open Settings if in gameplay
         if (window->isKeyPressed(VK_ESCAPE)) {
-            if (updateCalendar.getIsOpen()) {
+            if (chatUI.isOpen()) {
+                chatUI.setOpen(false);
+            } else if (multiplayerUI.isOpen()) {
+                multiplayerUI.setOpen(false);
+            } else if (updateCalendar.getIsOpen()) {
                 updateCalendar.close();
             } else if (irisShaderUI.isOpen()) {
                 irisShaderUI.setOpen(false);
@@ -349,10 +424,15 @@ int main(int argc, char* argv[]) {
                 if (window->isKeyPressed(VK_F5)) {
                     config.gameplay.thirdPerson = !config.gameplay.thirdPerson;
                 }
+                // 'T' or 'Enter' key: Open in-game co-op chat
+                if (window->isKeyPressed('T') || window->isKeyPressed(VK_RETURN)) {
+                    chatUI.setOpen(true);
+                }
             }
         }
 
-        bool anyMenuOpen = (gameState == GameState::MainMenu) || updateCalendar.getIsOpen() || irisShaderUI.isOpen() || settingsMenu.isOpen() ||
+        bool anyMenuOpen = (gameState == GameState::MainMenu) || multiplayerUI.isOpen() || chatUI.isOpen() ||
+                           updateCalendar.getIsOpen() || irisShaderUI.isOpen() || settingsMenu.isOpen() ||
                            inventoryMenu.getIsOpen() || buildMenu.getIsOpen() ||
                            blockCatalog.getIsOpen() || bestiary.getIsOpen() || biomeCodex.getIsOpen();
 
@@ -608,6 +688,9 @@ int main(int argc, char* argv[]) {
                         if (miningProgress >= 1.0f) {
                             // Complete fracture: block broken!
                             world->setBlock(currentMiningPos.x, currentMiningPos.y, currentMiningPos.z, 0);
+                            if (netClient->isConnected()) {
+                                netClient->sendBlockModify(currentMiningPos.x, currentMiningPos.y, currentMiningPos.z, 0);
+                            }
                             audio->playSound(SoundID::BlockBreak, 1.0f, 1.0f);
                             player.gainXP(5, audio.get());
 
@@ -727,6 +810,9 @@ int main(int argc, char* argv[]) {
                                 }
                                 if (canPlace) {
                                     world->setBlock(rHit.adjacentPos.x, rHit.adjacentPos.y, rHit.adjacentPos.z, held.id);
+                                    if (netClient->isConnected()) {
+                                        netClient->sendBlockModify(rHit.adjacentPos.x, rHit.adjacentPos.y, rHit.adjacentPos.z, held.id);
+                                    }
                                     audio->playSound(SoundID::BlockPlace, 1.0f, 1.0f);
                                     if (World::isSapling(held.id)) {
                                         hud.addNotification("Planted " + ItemRegistry::get(held.id).name + "! (Growing...)", {0.4f, 0.95f, 0.5f, 1.0f});
@@ -833,6 +919,44 @@ int main(int argc, char* argv[]) {
 
         world->update(player.getPosition(), dt);
         audio->update(dt);
+
+        // Update Network Client & Co-op Multiplayer Synchronization
+        netClient->update(dt);
+        chatUI.update(dt);
+
+        if (netClient->isConnected()) {
+            // Apply incoming remote block modifications to local world
+            Net::PacketBlockModify bmod;
+            while (netClient->popBlockModification(bmod)) {
+                world->setBlock(bmod.x, bmod.y, bmod.z, bmod.blockId);
+                if (audio) {
+                    audio->playSound(bmod.blockId == 0 ? SoundID::BlockBreak : SoundID::BlockPlace, 0.85f, 1.0f);
+                }
+            }
+
+            // Pop incoming chat messages into chatUI
+            Net::PacketChat inChat;
+            while (netClient->popChatMessage(inChat)) {
+                std::string sName = inChat.senderName;
+                Vec4 cColor = (inChat.senderId == 0) ? Vec4(1.0f, 0.85f, 0.35f, 1.0f) :
+                              (inChat.senderId == netClient->getLocalPlayerId()) ? Vec4(0.4f, 0.95f, 0.5f, 1.0f) : Vec4(0.45f, 0.82f, 1.0f, 1.0f);
+                chatUI.addMessage(sName, inChat.message, cColor);
+            }
+
+            // Transmit local player state to server at 20Hz
+            netClient->sendPlayerState(
+                player.getPosition(),
+                camera.getYaw(),
+                camera.getPitch(),
+                player.getIsSprinting(),
+                player.isAttacking(),
+                player.getIsCrouching(),
+                player.isGrounded(),
+                player.getHeldBlockId(),
+                player.getHealth(),
+                player.getMaxHealth()
+            );
+        }
 
         // Update physical dropped items (physics, terrain bounce, player magnetism, pickup)
         for (auto it = droppedItems.begin(); it != droppedItems.end(); ) {
@@ -1028,13 +1152,18 @@ int main(int argc, char* argv[]) {
             itemBuffer.draw();
         }
 
-        // Batch & Render Creatures and Physical Capture Spheres
+        // Batch & Render Creatures, Physical Capture Spheres, and Remote Co-op Players
         std::vector<VoxelVertex> creatureVerts;
         for (const auto& c : creatures) {
             c->appendModelVertices(creatureVerts, totalTime);
         }
         for (const auto& sp : captureSpheres) {
             sp->appendModelVertices(creatureVerts, totalTime);
+        }
+        if (netClient->isConnected()) {
+            for (const auto& pair : netClient->getRemotePlayers()) {
+                pair.second.appendModelVertices(creatureVerts, totalTime);
+            }
         }
         if (!creatureVerts.empty()) {
             creatureBuffer.uploadVoxelData(creatureVerts.data(), creatureVerts.size() * sizeof(VoxelVertex),
@@ -1053,7 +1182,11 @@ int main(int argc, char* argv[]) {
         uiRenderer->begin(window->getWidth(), window->getHeight());
 
         if (gameState == GameState::MainMenu) {
-            mainMenu.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mClicked, totalTime);
+            if (multiplayerUI.isOpen()) {
+                multiplayerUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mClicked, totalTime);
+            } else {
+                mainMenu.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mClicked, totalTime);
+            }
         } else {
             // Render In-Game HUD & Mob Overhead Indicators only when gameplay is active (no menu open)
             if (!anyMenuOpen) {
@@ -1181,6 +1314,57 @@ int main(int argc, char* argv[]) {
             if (blockCatalog.getIsOpen()) blockCatalog.render(window->getWidth(), window->getHeight(), player);
             if (bestiary.getIsOpen()) bestiary.render(window->getWidth(), window->getHeight());
             if (biomeCodex.getIsOpen()) biomeCodex.render(window->getWidth(), window->getHeight());
+
+            // Remote Players 3D Floating Nametags & Health Bars
+            if (netClient->isConnected()) {
+                float sw = static_cast<float>(window->getWidth());
+                float sh = static_cast<float>(window->getHeight());
+
+                for (const auto& pair : netClient->getRemotePlayers()) {
+                    const auto& rp = pair.second;
+                    Vec3 tagPos = rp.getNametagPosition();
+                    Vec3 toTag = tagPos - camera.getRenderPosition();
+                    float distToTag = toTag.length();
+
+                    // Only render if in front of camera and within 40 blocks
+                    if (distToTag < 40.0f && toTag.dot(camera.getForward()) > 0.1f) {
+                        Vec4 clip = viewProj * Vec4(tagPos.x, tagPos.y, tagPos.z, 1.0f);
+                        if (clip.w > 0.05f) {
+                            float ndcX = clip.x / clip.w;
+                            float ndcY = clip.y / clip.w;
+                            if (ndcX >= -1.1f && ndcX <= 1.1f && ndcY >= -1.1f && ndcY <= 1.1f) {
+                                float sx = (ndcX * 0.5f + 0.5f) * sw;
+                                float sy = (1.0f - (ndcY * 0.5f + 0.5f)) * sh;
+
+                                // Nametag background pill
+                                std::string tagText = rp.getName();
+                                float tagScale = 1.35f;
+                                float tagTextW = tagText.length() * 6.0f * tagScale;
+                                uiRenderer->drawRect(sx - tagTextW * 0.5f - 6.0f, sy - 4.0f, tagTextW + 12.0f, 18.0f, {0.05f, 0.08f, 0.12f, 0.75f});
+                                uiRenderer->drawRectOutline(sx - tagTextW * 0.5f - 6.0f, sy - 4.0f, tagTextW + 12.0f, 18.0f, 1.0f, {0.3f, 0.7f, 1.0f, 0.7f});
+                                uiRenderer->drawTextCentered(tagText, sx, sy + 1.0f, tagScale, {1.0f, 0.95f, 0.45f, 1.0f});
+
+                                // Health Bar under Nametag
+                                float barW = std::max(40.0f, tagTextW);
+                                float barH = 4.0f;
+                                float hpPct = std::max(0.0f, std::min(1.0f, rp.getHealth() / std::max(1.0f, rp.getMaxHealth())));
+                                uiRenderer->drawRect(sx - barW * 0.5f, sy + 16.0f, barW, barH, {0.1f, 0.1f, 0.1f, 0.8f});
+                                uiRenderer->drawRect(sx - barW * 0.5f, sy + 16.0f, barW * hpPct, barH, {0.25f, 0.85f, 0.35f, 0.95f});
+                            }
+                        }
+                    }
+                }
+
+                // Co-op Realm Top Status Pill
+                size_t totalPlayers = netClient->getRemotePlayers().size() + 1;
+                std::string coopBadge = "CO-OP REALM: " + std::to_string(totalPlayers) + " PLAYERS  |  PING: " + std::to_string(static_cast<int>(netClient->getPingMs())) + "ms";
+                uiRenderer->drawRect(20.0f, 20.0f, coopBadge.length() * 6.0f * 1.35f + 16.0f, 22.0f, {0.05f, 0.10f, 0.18f, 0.85f});
+                uiRenderer->drawRectOutline(20.0f, 20.0f, coopBadge.length() * 6.0f * 1.35f + 16.0f, 22.0f, 1.0f, {0.3f, 0.8f, 1.0f, 0.8f});
+                uiRenderer->drawText(coopBadge, 28.0f, 24.0f, 1.35f, {0.4f, 0.9f, 1.0f, 1.0f});
+            }
+
+            // In-Game Chat System
+            chatUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), totalTime);
         }
 
         // Render Settings Menu

@@ -78,7 +78,7 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
 
     // Background frosted chassis for buttons
     float chassisPad = 16.0f;
-    float chassisH = 5 * btnH + 4 * btnGap + chassisPad * 2.0f;
+    float chassisH = 6 * btnH + 5 * btnGap + chassisPad * 2.0f;
     ui->drawRect(btnX - chassisPad, startY - chassisPad, btnW + chassisPad * 2.0f, chassisH, {0.05f, 0.07f, 0.10f, 0.70f});
     ui->drawRectOutline(btnX - chassisPad, startY - chassisPad, btnW + chassisPad * 2.0f, chassisH, 1.5f, {0.20f, 0.35f, 0.55f, 0.5f});
 
@@ -87,23 +87,28 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
         if (onPlay) onPlay();
     }
 
+    // Co-op Multiplayer Button
+    if (drawButton(ui, btnX, startY + 1 * (btnH + btnGap), btnW, btnH, "> MULTIPLAYER (COK OYUNCULU) <", false, mouseX, mouseY, mouseLeftClicked)) {
+        if (onOpenMultiplayer) onOpenMultiplayer();
+    }
+
     // Update Calendar & Roadmap Button
-    if (drawButton(ui, btnX, startY + 1 * (btnH + btnGap), btnW, btnH, "UPDATE CALENDAR & ROADMAP", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 2 * (btnH + btnGap), btnW, btnH, "UPDATE CALENDAR & ROADMAP", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onOpenCalendar) onOpenCalendar();
     }
 
     // Iris Shaders Button
-    if (drawButton(ui, btnX, startY + 2 * (btnH + btnGap), btnW, btnH, "SHADER PACKS (IRIS)", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 3 * (btnH + btnGap), btnW, btnH, "SHADER PACKS (IRIS)", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onOpenShaders) onOpenShaders();
     }
 
     // Settings & Options Button
-    if (drawButton(ui, btnX, startY + 3 * (btnH + btnGap), btnW, btnH, "SETTINGS & OPTIONS", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 4 * (btnH + btnGap), btnW, btnH, "SETTINGS & OPTIONS", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onOpenSettings) onOpenSettings();
     }
 
     // Quit Button
-    if (drawButton(ui, btnX, startY + 4 * (btnH + btnGap), btnW, btnH, "QUIT TO DESKTOP", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 5 * (btnH + btnGap), btnW, btnH, "QUIT TO DESKTOP", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onQuit) onQuit();
     }
 

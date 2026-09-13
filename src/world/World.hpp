@@ -43,6 +43,7 @@ public:
     uint8_t getBiomeAt(float worldX, float worldZ) const;
 
     int getLoadedChunkCount() const { return static_cast<int>(chunks.size()); }
+    uint32_t getSeed() const { return worldSeed; }
 
     // Sapling & Procedural Tree Growth System
     void addSapling(int x, int y, int z, uint16_t saplingId, float timer = -1.0f);
@@ -75,6 +76,7 @@ public:
 private:
     void loadChunksAround(int centerChunkX, int centerChunkZ, int radius);
 
+    uint32_t worldSeed = 9999;
     WorldGenerator generator;
     PerlinNoise tempNoise;
     PerlinNoise moistureNoise;

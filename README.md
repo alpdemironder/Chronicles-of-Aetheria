@@ -139,9 +139,33 @@ The executable will be built directly to `bin\AetheriaRPG.exe`.
 | **V** | Cycle Companion Stance (`Follow` -> `Stay` -> `Work`) |
 | **F** | Hammer Blueprint Scaffold |
 | **B** | Palworld Building Menu |
+| **T / Enter** | Open In-Game Co-op Chat |
 | **X** | Dismantle Mode |
 | **O** | Iris Shaderpack Menu |
 | **Esc** | Pause / Settings Menu |
+
+---
+
+## 🌐 Co-op Multiplayer & Worlds Hub (Çok Oyunculu)
+
+Chronicles of Aetheria features a full-featured tabbed **Multiplayer & Worlds Hub** (`> MULTIPLAYER (ÇOK OYUNCULU) <`):
+- **📑 Tab 1: Kendi Dünyalarım (My Worlds)**:
+  - Select from your local procedural worlds with details on World Name, Seed, Game Mode, and Port.
+  - **Host & Play (`DUNYAYI BASLAT`)**: Spin up a local server and host your world for friends across LAN or VPN (Hamachi/Tailscale/Radmin) with one click!
+  - **Play Solo (`TEK BASINA OYNA`)**: Instantly enter and explore the selected world offline.
+  - **Create World (`+ YENI DUNYA`)**: Procedurally generate fresh worlds with custom World Name, Seed generator (including Randomizer), and Port assignment.
+- **🌐 Tab 2: Diğer Dünyalar (Other Worlds & Servers)**:
+  - Browse saved remote and community servers with real-time ping latency readouts (ms) and online beacons.
+  - **Direct Connect (`DOGRUDAN BAGLANTI`)**: Join any LAN or remote world directly by typing the target `IP:Port`.
+  - **Add Server (`+ SUNUCU EKLE`)**: Save your friends' servers to your persistent multiplayer server list.
+- **👤 Tab 3: Oyuncu Profili (Player Profile)**:
+  - Customize your multiplayer Nickname/Callsign and view connection diagnostics.
+- **Dedicated Headless Server**: Run `run_server.bat` (or `bin\AetheriaServer.exe --port 25565 --seed 133742`) to host a high-performance 24/7 realm with console commands (`/list`, `/say`, `/kick`, `/stop`).
+- **Synchronized Gameplay**:
+  - Real-time block placement and destruction synchronization with delta world history.
+  - 3D character avatars, held weapons, and floating nametags with dynamic health bars.
+  - In-game chat system (`[T]` / `[Enter]`) with channel colors and automatic message fade-out.
+  - For full hosting and network setup instructions, see [docs/MULTIPLAYER_GUIDE.md](docs/MULTIPLAYER_GUIDE.md).
 
 ---
 
