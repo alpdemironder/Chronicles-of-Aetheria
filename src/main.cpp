@@ -309,6 +309,8 @@ int main(int argc, char* argv[]) {
     IVec3 currentMiningPos{0, -999, 0};
     uint16_t currentMiningId = 0;
     float miningSwingTimer = 0.0f;
+    bool hasTargetedBlock = false;
+    IVec3 targetedBlockPos{0, 0, 0};
 
     window->setCursorLocked(false);
 
@@ -482,6 +484,12 @@ int main(int argc, char* argv[]) {
                 if (window->isKeyPressed(VK_F5)) {
                     config.gameplay.thirdPerson = !config.gameplay.thirdPerson;
                 }
+                if (window->isKeyPressed(VK_F3)) {
+                    hud.toggleF3();
+                }
+                if (window->isKeyPressed(VK_F1)) {
+                    hud.toggleHUD();
+                }
                 // 'T' or 'Enter' key: Open in-game co-op chat
                 if (window->isKeyPressed('T') || window->isKeyPressed(VK_RETURN)) {
                     chatUI.setOpen(true);
@@ -544,6 +552,7 @@ int main(int argc, char* argv[]) {
             miningProgress = 0.0f;
             currentMiningPos = {0, -999, 0};
             currentMiningId = 0;
+            hasTargetedBlock = false;
         }
 
         // Handle Active Menu Input or Gameplay Input
@@ -573,6 +582,13 @@ int main(int argc, char* argv[]) {
             player.handleInput(*window, camera, audio.get(), dt, buildingMgr->getIsBuilding());
 
             Ray aimRay(camera.getRenderPosition(), camera.getForward());
+            RaycastResult lookHit = world->raycast(aimRay, 5.5f);
+            if (lookHit.hit && lookHit.blockId != 0 && lookHit.blockId != 52) {
+                hasTargetedBlock = true;
+                targetedBlockPos = lookHit.hitBlockPos;
+            } else {
+                hasTargetedBlock = false;
+            }
 
             // -----------------------------------------------------------------
             // COMBAT & MINECRAFT-STYLE CONTINUOUS BLOCK MINING
@@ -882,7 +898,7 @@ int main(int argc, char* argv[]) {
                             held.count--;
                             if (held.count == 0) held.clear();
                             audio->playSound(SoundID::LevelUp, 1.2f, 1.1f);
-                            hud.addNotification("★ Tree matured instantly with Bone Meal! ★", {0.35f, 0.95f, 0.55f, 1.0f});
+                            hud.addNotification("? Tree matured instantly with Bone Meal! ?", {0.35f, 0.95f, 0.55f, 1.0f});
                         } else if (rHit.hit) {
                             // Place held block
                             if (!held.isEmpty() && held.id >= 1 && held.id <= 369) {
@@ -1052,7 +1068,7 @@ int main(int argc, char* argv[]) {
                 if (cmdTarget) {
                     cmdTarget->cycleStance();
                     if (audio) audio->playSound(SoundID::ItemPickup, 1.30f, 1.25f);
-                    hud.addNotification("★ " + cmdTarget->getDef().name + " set to [" + cmdTarget->getStanceName() + "] ★",
+                    hud.addNotification("? " + cmdTarget->getDef().name + " set to [" + cmdTarget->getStanceName() + "] ?",
                                        {0.25f, 0.95f, 1.0f, 1.0f});
                 } else {
                     hud.addNotification("No tamed companion nearby to command!", {0.95f, 0.45f, 0.35f, 1.0f});
@@ -1398,7 +1414,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                hud.render(window->getWidth(), window->getHeight(), player, *world, *buildingMgr, timer.getFPS(), totalTime, dt, camera.getIsZooming(), miningProgress, currentMiningId, aimedWildCreature, aimCatchChance, activeCompanion);
+                hud.render(window->getWidth(), window->getHeight(), player, *world, *buildingMgr, camera, viewProj, hasTargetedBlock, targetedBlockPos, timer.getFPS(), totalTime, dt, camera.getIsZooming(), miningProgress, currentMiningId, aimedWildCreature, aimCatchChance, activeCompanion);
 
                 // Render Floating Overhead Health Bars & Nameplates for Visible Nearby Creatures
                 Creature* closestBoss = nullptr;
@@ -1444,7 +1460,7 @@ int main(int argc, char* argv[]) {
 
                             int mobLevel = c->getIsTamed() ? c->getCompanionLevel() : std::max(1, static_cast<int>(c->getMaxHealth() / 15.0f));
                             std::string label = c->getIsTamed() ?
-                                                ("★ " + c->getDef().name + " (Lv." + std::to_string(mobLevel) + ") [" + c->getStanceName() + "] ★") :
+                                                ("? " + c->getDef().name + " (Lv." + std::to_string(mobLevel) + ") [" + c->getStanceName() + "] ?") :
                                                 (c->getDef().name + " [Lv." + std::to_string(mobLevel) + "]");
                             float textScale = (dist < 10.0f) ? 1.2f : 0.9f;
                             Vec4 nameCol = c->getIsTamed() ? Vec4(0.35f, 0.95f, 1.0f, 1.0f) : Vec4(1.0f, 1.0f, 1.0f, 0.95f);
