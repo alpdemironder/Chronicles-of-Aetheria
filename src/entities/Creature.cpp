@@ -361,51 +361,78 @@ void Creature::updateAI(World* world, const Vec3& playerPos, BuildingManager* bu
     Entity::update(world, dt);
 }
 
-static void appendOrientedBox(std::vector<VoxelVertex>& verts,
-                              const Vec3& origin,
-                              float yawDeg,
-                              const Vec3& localOffset,
-                              const Vec3& size,
-                              const Vec4& col,
-                              float tIdx,
-                              float pitchDeg = 0.0f,
-                              float rollDeg = 0.0f) {
+static void appendRiggedBox(std::vector<VoxelVertex>& verts,
+                            const Vec3& mobOrigin,
+                            float mobYawDeg,
+                            const Vec3& pivot,
+                            const Vec3& offsetFromPivot,
+                            const Vec3& size,
+                            const Vec4& col,
+                            float tIdx,
+                            float jointPitch = 0.0f,
+                            float jointYaw = 0.0f,
+                            float jointRoll = 0.0f,
+                            float parentPitch = 0.0f,
+                            float parentRoll = 0.0f) {
     Vec3 h = size * 0.5f;
 
-    // 8 local corners centered around localOffset
+    // 8 local corners centered around offsetFromPivot
     Vec3 corners[8] = {
-        {-h.x, -h.y, -h.z}, {+h.x, -h.y, -h.z}, {+h.x, +h.y, -h.z}, {-h.x, +h.y, -h.z}, // Back 4 (Z-)
-        {-h.x, -h.y, +h.z}, {+h.x, -h.y, +h.z}, {+h.x, +h.y, +h.z}, {-h.x, +h.y, +h.z}  // Front 4 (Z+)
+        offsetFromPivot + Vec3(-h.x, -h.y, -h.z),
+        offsetFromPivot + Vec3(+h.x, -h.y, -h.z),
+        offsetFromPivot + Vec3(+h.x, +h.y, -h.z),
+        offsetFromPivot + Vec3(-h.x, +h.y, -h.z),
+        offsetFromPivot + Vec3(-h.x, -h.y, +h.z),
+        offsetFromPivot + Vec3(+h.x, -h.y, +h.z),
+        offsetFromPivot + Vec3(+h.x, +h.y, +h.z),
+        offsetFromPivot + Vec3(-h.x, +h.y, +h.z)
     };
 
-    float rP = pitchDeg * DEG2RAD;
+    float rP = jointPitch * DEG2RAD;
     float cp = std::cos(rP), sp = std::sin(rP);
-    float rR = rollDeg * DEG2RAD;
+    float rR = jointRoll * DEG2RAD;
     float cr = std::cos(rR), sr = std::sin(rR);
-    float rY = yawDeg * DEG2RAD;
+    float rY = jointYaw * DEG2RAD;
     float cy = std::cos(rY), sy = std::sin(rY);
 
-    auto transformPt = [&](const Vec3& c) -> Vec3 {
-        // 1. Pitch around X
-        float y1 = c.y * cp - c.z * sp;
-        float z1 = c.y * sp + c.z * cp;
-        float x1 = c.x;
+    float prP = parentPitch * DEG2RAD;
+    float pcp = std::cos(prP), psp = std::sin(prP);
+    float prR = parentRoll * DEG2RAD;
+    float pcr = std::cos(prR), psr = std::sin(prR);
 
-        // 2. Roll around Z
+    float mY = mobYawDeg * DEG2RAD;
+    float myC = std::cos(mY), myS = std::sin(mY);
+
+    auto transformPt = [&](const Vec3& pt) -> Vec3 {
+        // 1. Joint rotation around pivot
+        float y1 = pt.y * cp - pt.z * sp;
+        float z1 = pt.y * sp + pt.z * cp;
+        float x1 = pt.x;
+
         float x2 = x1 * cr - y1 * sr;
         float y2 = x1 * sr + y1 * cr;
         float z2 = z1;
 
-        // 3. Local translation
-        float lx = x2 + localOffset.x;
-        float ly = y2 + localOffset.y;
-        float lz = z2 + localOffset.z;
+        float x3 = x2 * cy + z2 * sy;
+        float y3 = y2;
+        float z3 = -x2 * sy + z2 * cy;
 
-        // 4. Rotate around mob Yaw and add mob origin
+        Vec3 inMob = pivot + Vec3(x3, y3, z3);
+
+        // 2. Parent body rotation (death roll, lunge)
+        float py1 = inMob.y * pcp - inMob.z * psp;
+        float pz1 = inMob.y * psp + inMob.z * pcp;
+        float px1 = inMob.x;
+
+        float px2 = px1 * pcr - py1 * psr;
+        float py2 = px1 * psr + py1 * pcr;
+        float pz2 = pz1;
+
+        // 3. World placement
         return Vec3(
-            origin.x + (lx * cy + lz * sy),
-            origin.y + ly,
-            origin.z + (-lx * sy + lz * cy)
+            mobOrigin.x + (px2 * myC + pz2 * myS),
+            mobOrigin.y + py2,
+            mobOrigin.z + (-px2 * myS + pz2 * myC)
         );
     };
 
@@ -423,10 +450,22 @@ static void appendOrientedBox(std::vector<VoxelVertex>& verts,
         float y2 = x1 * sr + y1 * cr;
         float z2 = z1;
 
+        float x3 = x2 * cy + z2 * sy;
+        float y3 = y2;
+        float z3 = -x2 * sy + z2 * cy;
+
+        float py1 = y3 * pcp - z3 * psp;
+        float pz1 = y3 * psp + z3 * pcp;
+        float px1 = x3;
+
+        float px2 = px1 * pcr - py1 * psr;
+        float py2 = px1 * psr + py1 * pcr;
+        float pz2 = pz1;
+
         return Vec3(
-            x2 * cy + z2 * sy,
-            y2,
-            -x2 * sy + z2 * cy
+            px2 * myC + pz2 * myS,
+            py2,
+            -px2 * myS + pz2 * myC
         ).normalized();
     };
 
@@ -443,151 +482,24 @@ static void appendOrientedBox(std::vector<VoxelVertex>& verts,
         verts.push_back({wc[i3].x, wc[i3].y, wc[i3].z, 0, 1, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
     };
 
-    // 6 Faces with counter-clockwise winding:
-    addFaceQuad(7, 6, 2, 3, {0, 1, 0}, 1.0f);  // Top (+Y)
-    addFaceQuad(0, 1, 5, 4, {0, -1, 0}, 0.55f);// Bottom (-Y)
-    addFaceQuad(4, 5, 6, 7, {0, 0, 1}, 0.85f); // Front (+Z)
-    addFaceQuad(1, 0, 3, 2, {0, 0, -1}, 0.80f);// Back (-Z)
-    addFaceQuad(5, 1, 2, 6, {1, 0, 0}, 0.70f);  // Right (+X)
-    addFaceQuad(0, 4, 7, 3, {-1, 0, 0}, 0.75f); // Left (-X)
+    addFaceQuad(7, 6, 2, 3, {0, 1, 0}, 1.0f);   // Top (+Y)
+    addFaceQuad(0, 1, 5, 4, {0, -1, 0}, 0.55f); // Bottom (-Y)
+    addFaceQuad(4, 5, 6, 7, {0, 0, 1}, 0.85f);  // Front (+Z)
+    addFaceQuad(1, 0, 3, 2, {0, 0, -1}, 0.80f); // Back (-Z)
+    addFaceQuad(5, 1, 2, 6, {1, 0, 0}, 0.70f);   // Right (+X)
+    addFaceQuad(0, 4, 7, 3, {-1, 0, 0}, 0.75f);  // Left (-X)
 }
 
-// Renders an aggressive 4-sided pyramid / spike tapering to a sharp apex point
-static void appendOrientedSpike(std::vector<VoxelVertex>& verts,
-                                const Vec3& origin,
-                                float yawDeg,
-                                const Vec3& localOffset,
-                                const Vec3& baseSize,
-                                float height,
-                                const Vec4& col,
-                                float tIdx,
-                                float pitchDeg = 0.0f,
-                                float rollDeg = 0.0f) {
-    Vec3 h = {baseSize.x * 0.5f, 0.0f, baseSize.z * 0.5f};
-    Vec3 corners[5] = {
-        {-h.x, 0.0f, -h.z}, {+h.x, 0.0f, -h.z}, {+h.x, 0.0f, +h.z}, {-h.x, 0.0f, +h.z}, // Base 4 (Y=0)
-        {0.0f, height, 0.0f} // Apex tip
-    };
-
-    float rP = pitchDeg * DEG2RAD;
-    float cp = std::cos(rP), sp = std::sin(rP);
-    float rR = rollDeg * DEG2RAD;
-    float cr = std::cos(rR), sr = std::sin(rR);
-    float rY = yawDeg * DEG2RAD;
-    float cy = std::cos(rY), sy = std::sin(rY);
-
-    auto transformPt = [&](const Vec3& c) -> Vec3 {
-        float y1 = c.y * cp - c.z * sp;
-        float z1 = c.y * sp + c.z * cp;
-        float x1 = c.x;
-        float x2 = x1 * cr - y1 * sr;
-        float y2 = x1 * sr + y1 * cr;
-        float z2 = z1;
-        float lx = x2 + localOffset.x;
-        float ly = y2 + localOffset.y;
-        float lz = z2 + localOffset.z;
-        return Vec3(
-            origin.x + (lx * cy + lz * sy),
-            origin.y + ly,
-            origin.z + (-lx * sy + lz * cy)
-        );
-    };
-
-    Vec3 wc[5];
-    for (int i = 0; i < 5; ++i) wc[i] = transformPt(corners[i]);
-    Vec3 spikeCenter = (wc[0] + wc[1] + wc[2] + wc[3] + wc[4]) * 0.2f;
-
-    auto addTri = [&](int i0, int i1, int i2, float shade) {
-        Vec3 e1 = wc[i1] - wc[i0];
-        Vec3 e2 = wc[i2] - wc[i0];
-        Vec3 wn = (e1.cross(e2)).normalized();
-        Vec3 faceCenter = (wc[i0] + wc[i1] + wc[i2]) * (1.0f / 3.0f);
-        if (wn.dot(faceCenter - spikeCenter) < 0.0f) wn = -wn;
-        Vec4 c = {col.x * shade, col.y * shade, col.z * shade, col.w};
-        verts.push_back({wc[i0].x, wc[i0].y, wc[i0].z, 0, 0, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
-        verts.push_back({wc[i1].x, wc[i1].y, wc[i1].z, 1, 0, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
-        verts.push_back({wc[i2].x, wc[i2].y, wc[i2].z, 0.5f, 1, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
-    };
-
-    addTri(1, 0, 4, 0.85f); // Back face
-    addTri(3, 2, 4, 0.95f); // Front face
-    addTri(2, 1, 4, 0.75f); // Right face
-    addTri(0, 3, 4, 0.65f); // Left face
-    // Base quad
-    addTri(0, 1, 2, 0.55f);
-    addTri(0, 2, 3, 0.55f);
-}
-
-// Renders an aggressive 5-sided wedge/prism slanting along +Z
-static void appendOrientedWedge(std::vector<VoxelVertex>& verts,
-                                const Vec3& origin,
-                                float yawDeg,
-                                const Vec3& localOffset,
-                                const Vec3& size,
-                                const Vec4& col,
-                                float tIdx,
-                                float pitchDeg = 0.0f,
-                                float rollDeg = 0.0f) {
-    Vec3 h = size * 0.5f;
-    // Back 4 (Z-): full rectangle; Front (Z+): collapsed to bottom edge
-    Vec3 corners[6] = {
-        {-h.x, -h.y, -h.z}, {+h.x, -h.y, -h.z}, {+h.x, +h.y, -h.z}, {-h.x, +h.y, -h.z}, // Back 4 (Z-)
-        {-h.x, -h.y, +h.z}, {+h.x, -h.y, +h.z}                                            // Front 2 (Z+ bottom ridge)
-    };
-
-    float rP = pitchDeg * DEG2RAD;
-    float cp = std::cos(rP), sp = std::sin(rP);
-    float rR = rollDeg * DEG2RAD;
-    float cr = std::cos(rR), sr = std::sin(rR);
-    float rY = yawDeg * DEG2RAD;
-    float cy = std::cos(rY), sy = std::sin(rY);
-
-    auto transformPt = [&](const Vec3& c) -> Vec3 {
-        float y1 = c.y * cp - c.z * sp;
-        float z1 = c.y * sp + c.z * cp;
-        float x1 = c.x;
-        float x2 = x1 * cr - y1 * sr;
-        float y2 = x1 * sr + y1 * cr;
-        float z2 = z1;
-        float lx = x2 + localOffset.x;
-        float ly = y2 + localOffset.y;
-        float lz = z2 + localOffset.z;
-        return Vec3(
-            origin.x + (lx * cy + lz * sy),
-            origin.y + ly,
-            origin.z + (-lx * sy + lz * cy)
-        );
-    };
-
-    Vec3 wc[6];
-    for (int i = 0; i < 6; ++i) wc[i] = transformPt(corners[i]);
-    Vec3 wedgeCenter = (wc[0] + wc[1] + wc[2] + wc[3] + wc[4] + wc[5]) * (1.0f / 6.0f);
-
-    auto addTri = [&](int i0, int i1, int i2, float shade) {
-        Vec3 e1 = wc[i1] - wc[i0];
-        Vec3 e2 = wc[i2] - wc[i0];
-        Vec3 wn = (e1.cross(e2)).normalized();
-        Vec3 faceCenter = (wc[i0] + wc[i1] + wc[i2]) * (1.0f / 3.0f);
-        if (wn.dot(faceCenter - wedgeCenter) < 0.0f) wn = -wn;
-        Vec4 c = {col.x * shade, col.y * shade, col.z * shade, col.w};
-        verts.push_back({wc[i0].x, wc[i0].y, wc[i0].z, 0, 0, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
-        verts.push_back({wc[i1].x, wc[i1].y, wc[i1].z, 1, 0, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
-        verts.push_back({wc[i2].x, wc[i2].y, wc[i2].z, 0.5f, 1, wn.x, wn.y, wn.z, c.x, c.y, c.z, c.w, tIdx});
-    };
-
-    // Slanted top/front face
-    addTri(3, 2, 5, 1.0f);
-    addTri(3, 5, 4, 1.0f);
-    // Flat bottom face
-    addTri(0, 1, 5, 0.55f);
-    addTri(0, 5, 4, 0.55f);
-    // Back face
-    addTri(1, 0, 3, 0.75f);
-    addTri(1, 3, 2, 0.75f);
-    // Left side triangle
-    addTri(0, 4, 3, 0.70f);
-    // Right side triangle
-    addTri(5, 1, 2, 0.80f);
+static void appendOrientedBox(std::vector<VoxelVertex>& verts,
+                              const Vec3& origin,
+                              float yawDeg,
+                              const Vec3& localOffset,
+                              const Vec3& size,
+                              const Vec4& col,
+                              float tIdx,
+                              float pitchDeg = 0.0f,
+                              float rollDeg = 0.0f) {
+    appendRiggedBox(verts, origin, yawDeg, localOffset, {0, 0, 0}, size, col, tIdx, pitchDeg, 0.0f, rollDeg, 0.0f, 0.0f);
 }
 
 void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalTime) const {
@@ -641,8 +553,12 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         break;
     }
 
-    float walkSwing = std::sin(animTime * 10.0f) * 26.0f;
-    float attackLunge = (state == AIState::Attack) ? 15.0f : 0.0f;
+    // Dynamic movement & walk animation scaling
+    float hSpeed = std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+    float moveFactor = std::clamp(hSpeed / 1.1f, 0.0f, 1.0f);
+    float walkSwing = std::sin(animTime * 8.0f) * 34.0f * (moveFactor > 0.05f ? moveFactor : 0.0f);
+    float attackLunge = (state == AIState::Attack) ? 14.0f : 0.0f;
+    float idleBob = std::sin(animTime * 2.2f) * 0.015f;
 
     // =========================================================================
     // 1. MINECRAFT CREEPER (Iconic 4-Legged Green Explosive Terror)
@@ -651,34 +567,34 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         float swell = 1.0f;
         Vec4 creeperCol = col;
         if (creeperFuse > 0.0f) {
-            swell += (creeperFuse / 1.35f) * 0.32f; // Swells up by 32% while hissing!
+            swell += (creeperFuse / 1.35f) * 0.35f; // Swells up by 35% while hissing!
             if (static_cast<int>(creeperFuse * 18.0f) % 2 == 1) {
                 creeperCol = {1.95f, 1.95f, 1.95f, col.w}; // Rapid white flashing
             }
         }
 
-        float legH = 0.35f * swell;
+        float legH = 0.36f * swell;
         float legSz = 0.20f * swell;
         float torsoH = 0.72f * swell;
         float torsoW = 0.40f * swell;
-        float torsoD = 0.25f * swell;
+        float torsoD = 0.26f * swell;
         float headSz = 0.48f * swell;
 
-        // 4 Stubby Feet
-        float offX = 0.11f * swell;
-        float offZ = 0.13f * swell;
-        appendOrientedBox(verts, position, mobYaw, {-offX, legH * 0.5f,  offZ}, {legSz, legH, legSz}, creeperCol, 393.0f,  walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { offX, legH * 0.5f,  offZ}, {legSz, legH, legSz}, creeperCol, 393.0f, -walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, {-offX, legH * 0.5f, -offZ}, {legSz, legH, legSz}, creeperCol, 393.0f, -walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { offX, legH * 0.5f, -offZ}, {legSz, legH, legSz}, creeperCol, 393.0f,  walkSwing, deathRoll);
+        float offX = 0.12f * swell;
+        float offZ = 0.14f * swell;
+
+        // 4 Stubby Feet strictly pivoting at hip height legH
+        appendRiggedBox(verts, position, mobYaw, {-offX, legH,  offZ}, {0, -legH * 0.5f, 0}, {legSz, legH, legSz}, creeperCol, 393.0f,  walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { offX, legH,  offZ}, {0, -legH * 0.5f, 0}, {legSz, legH, legSz}, creeperCol, 393.0f, -walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {-offX, legH, -offZ}, {0, -legH * 0.5f, 0}, {legSz, legH, legSz}, creeperCol, 393.0f, -walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { offX, legH, -offZ}, {0, -legH * 0.5f, 0}, {legSz, legH, legSz}, creeperCol, 393.0f,  walkSwing, 0, 0, 0, deathRoll);
 
         // Rectangular Torso
-        Vec3 torsoPos = {0, legH + torsoH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoD}, creeperCol, 393.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + idleBob, 0}, {0, torsoH * 0.5f, 0}, {torsoW, torsoH, torsoD}, creeperCol, 393.0f, 0, 0, 0, attackLunge, deathRoll);
 
         // Head with THE ICONIC MINECRAFT CREEPER FACE
-        Vec3 headPos = {0, legH + torsoH + headSz * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz, headSz}, creeperCol, 396.0f, attackLunge * 0.5f, deathRoll);
+        float headTilt = std::sin(animTime * 1.5f) * 4.0f;
+        appendRiggedBox(verts, position, mobYaw, {0, legH + torsoH + idleBob, 0}, {0, headSz * 0.5f, 0}, {headSz, headSz, headSz}, creeperCol, 396.0f, headTilt, 0, 0, attackLunge, deathRoll);
         return;
     }
 
@@ -690,39 +606,40 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         if (hurtFlashTimer > 0.0f) enderCol = col;
 
         float legH = 1.60f;
-        float legW = 0.10f;
+        float legW = 0.12f;
         float torsoH = 0.85f;
-        float torsoW = 0.32f;
-        float torsoD = 0.18f;
+        float torsoW = 0.34f;
+        float torsoD = 0.20f;
         float armH = 1.55f;
-        float headSz = 0.40f;
+        float headSz = 0.42f;
 
-        // Long Slender Legs
-        appendOrientedBox(verts, position, mobYaw, {-0.10f, legH * 0.5f, 0}, {legW, legH, legW}, enderCol, 392.0f,  walkSwing * 0.65f, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { 0.10f, legH * 0.5f, 0}, {legW, legH, legW}, enderCol, 392.0f, -walkSwing * 0.65f, deathRoll);
+        // Long Slender Legs pivoting at hips Y=legH
+        appendRiggedBox(verts, position, mobYaw, {-0.10f, legH, 0}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, enderCol, 392.0f,  walkSwing * 0.70f, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { 0.10f, legH, 0}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, enderCol, 392.0f, -walkSwing * 0.70f, 0, 0, 0, deathRoll);
 
         // Slender Torso
-        Vec3 torsoPos = {0, legH + torsoH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoD}, enderCol, 392.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH, 0}, {0, torsoH * 0.5f, 0}, {torsoW, torsoH, torsoD}, enderCol, 392.0f, 0, 0, 0, attackLunge, deathRoll);
 
-        // Long Arms reaching down past knees
-        float leftArmPitch = -walkSwing * 0.5f;
-        float rightArmPitch = walkSwing * 0.5f;
-        if (state == AIState::Attack) {
-            leftArmPitch = -45.0f;
-            rightArmPitch = -45.0f;
+        // Long Arms reaching past knees
+        float leftArmPitch = -walkSwing * 0.55f;
+        float rightArmPitch = walkSwing * 0.55f;
+        if (state == AIState::Attack || state == AIState::Chase) {
+            leftArmPitch = -50.0f + std::sin(animTime * 18.0f) * 28.0f;
+            rightArmPitch = -50.0f - std::sin(animTime * 18.0f) * 28.0f;
         }
-        appendOrientedBox(verts, position, mobYaw, {-torsoW * 0.56f, legH + torsoH * 0.85f - armH * 0.5f, 0}, {legW, armH, legW}, enderCol, 392.0f, leftArmPitch, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { torsoW * 0.56f, legH + torsoH * 0.85f - armH * 0.5f, 0}, {legW, armH, legW}, enderCol, 392.0f, rightArmPitch, deathRoll);
+        float shoulderY = legH + torsoH * 0.90f;
+        appendRiggedBox(verts, position, mobYaw, {-torsoW * 0.58f, shoulderY, 0}, {0, -armH * 0.5f, 0}, {legW, armH, legW}, enderCol, 392.0f, leftArmPitch, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { torsoW * 0.58f, shoulderY, 0}, {0, -armH * 0.5f, 0}, {legW, armH, legW}, enderCol, 392.0f, rightArmPitch, 0, 0, attackLunge, deathRoll);
 
-        // Head
-        Vec3 headPos = {0, legH + torsoH + headSz * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz, headSz}, enderCol, 392.0f, attackLunge * 0.5f, deathRoll);
+        // Head with neck joint
+        float headShake = (state == AIState::Attack) ? (std::sin(animTime * 22.0f) * 8.0f) : 0.0f;
+        Vec3 neckPivot = {0, legH + torsoH, 0};
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {0, headSz * 0.5f, 0}, {headSz, headSz, headSz}, enderCol, 392.0f, headShake, 0, 0, attackLunge, deathRoll);
 
         // Glowing Purple Eye Slits
-        Vec4 purpleEye = {2.2f, 0.4f, 2.6f, col.w};
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-0.09f, 0.02f, headSz * 0.50f + 0.01f), {0.08f, 0.03f, 0.02f}, purpleEye, 396.0f, attackLunge * 0.5f, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3( 0.09f, 0.02f, headSz * 0.50f + 0.01f), {0.08f, 0.03f, 0.02f}, purpleEye, 396.0f, attackLunge * 0.5f, deathRoll);
+        Vec4 purpleEye = {2.4f, 0.4f, 2.8f, col.w};
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {-0.09f, headSz * 0.52f, headSz * 0.50f + 0.01f}, {0.08f, 0.03f, 0.02f}, purpleEye, 396.0f, headShake, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckPivot, { 0.09f, headSz * 0.52f, headSz * 0.50f + 0.01f}, {0.08f, 0.03f, 0.02f}, purpleEye, 396.0f, headShake, 0, 0, attackLunge, deathRoll);
         return;
     }
 
@@ -734,45 +651,39 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         float bodyW = 0.50f;
         float bodyD = 0.40f;
 
-        // Cephalothorax (Front head & thorax)
-        Vec3 cephPos = {0, bodyH * 0.85f, 0.18f};
-        appendOrientedBox(verts, position, mobYaw, cephPos, {bodyW, bodyH, bodyD}, col, 391.0f, attackLunge, deathRoll);
+        // Cephalothorax
+        Vec3 cephPivot = {0, bodyH * 0.65f, 0.18f};
+        appendRiggedBox(verts, position, mobYaw, cephPivot, {0, 0, 0}, {bodyW, bodyH, bodyD}, col, 391.0f, 0, 0, 0, attackLunge, deathRoll);
 
         // Large Bulbous Abdomen
-        Vec3 abdoPos = {0, bodyH * 1.15f, -0.42f};
-        appendOrientedBox(verts, position, mobYaw, abdoPos, {0.70f, 0.52f, 0.80f}, col * 0.85f, 391.0f, attackLunge * 0.5f, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, bodyH * 0.85f, -0.15f}, {0, 0, -0.40f}, {0.70f, 0.52f, 0.80f}, col * 0.85f, 391.0f, 0, 0, 0, attackLunge * 0.5f, deathRoll);
 
-        // Glowing Ruby Red Eyes (2 central large, 6 smaller surrounding)
+        // Glowing Ruby Red Eyes
         Vec4 eyeRed = {2.5f, 0.2f, 0.2f, col.w};
-        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3(-0.12f, 0.04f, bodyD * 0.50f + 0.01f), {0.08f, 0.08f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3( 0.12f, 0.04f, bodyD * 0.50f + 0.01f), {0.08f, 0.08f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3(-0.20f, 0.01f, bodyD * 0.46f + 0.01f), {0.04f, 0.04f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3( 0.20f, 0.01f, bodyD * 0.46f + 0.01f), {0.04f, 0.04f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, cephPivot, {-0.12f, 0.04f, bodyD * 0.50f + 0.01f}, {0.08f, 0.08f, 0.02f}, eyeRed, 396.0f, 0, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, cephPivot, { 0.12f, 0.04f, bodyD * 0.50f + 0.01f}, {0.08f, 0.08f, 0.02f}, eyeRed, 396.0f, 0, 0, 0, attackLunge, deathRoll);
 
-        // Fangs / Pedipalps
-        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3(-0.08f, -0.10f, bodyD * 0.48f), {0.06f, 0.10f, 0.06f}, {0.12f, 0.10f, 0.10f, col.w}, 391.0f, -15.0f, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3( 0.08f, -0.10f, bodyD * 0.48f), {0.06f, 0.10f, 0.06f}, {0.12f, 0.10f, 0.10f, col.w}, 391.0f, -15.0f, deathRoll);
+        // Pedipalp Fangs
+        appendRiggedBox(verts, position, mobYaw, cephPivot, {-0.08f, -0.12f, bodyD * 0.48f}, {0.06f, 0.12f, 0.06f}, {0.12f, 0.10f, 0.10f, col.w}, 391.0f, -15.0f, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, cephPivot, { 0.08f, -0.12f, bodyD * 0.48f}, {0.06f, 0.12f, 0.06f}, {0.12f, 0.10f, 0.10f, col.w}, 391.0f, -15.0f, 0, 0, attackLunge, deathRoll);
 
-        // 8 Splayed Crawling Legs (4 pairs)
+        // 8 Articulated Sprawling Legs with spider crawl gait
         float legThick = 0.06f;
         float legLen = 0.65f;
-        float legAngles[4] = {35.0f, 65.0f, 115.0f, 145.0f};
+        float legZOffsets[4] = {0.20f, 0.06f, -0.08f, -0.22f};
+        float legAngles[4] = {32.0f, 65.0f, 115.0f, 148.0f};
 
         for (int i = 0; i < 4; ++i) {
-            float phase = animTime * 12.0f + static_cast<float>(i) * 1.57f;
-            float stepLift = std::sin(phase) * 18.0f;
+            float phase = animTime * 10.0f + static_cast<float>(i) * 1.57f;
+            float stepPitch = std::sin(phase) * 22.0f * (moveFactor > 0.05f ? moveFactor : 0.0f);
 
-            float angL = legAngles[i];
-            float radL = angL * DEG2RAD;
-            Vec3 legBaseL = cephPos + Vec3(-bodyW * 0.45f, 0, (1.5f - static_cast<float>(i)) * 0.16f);
-            appendOrientedBox(verts, position, mobYaw, legBaseL + Vec3(-std::cos(radL) * legLen * 0.5f, 0.10f, std::sin(radL) * legLen * 0.5f),
-                              {legThick, legThick, legLen}, col * 0.75f, 391.0f, stepLift, -angL + deathRoll);
+            // Left leg
+            Vec3 hipL = {-bodyW * 0.50f, bodyH * 0.55f, legZOffsets[i]};
+            appendRiggedBox(verts, position, mobYaw, hipL, {-legLen * 0.45f, -0.12f, 0}, {legLen, legThick, legThick}, col * 0.75f, 391.0f, stepPitch, -legAngles[i] + 90.0f, -28.0f, 0, deathRoll);
 
-            float angR = -legAngles[i];
-            float radR = angR * DEG2RAD;
-            Vec3 legBaseR = cephPos + Vec3(bodyW * 0.45f, 0, (1.5f - static_cast<float>(i)) * 0.16f);
-            appendOrientedBox(verts, position, mobYaw, legBaseR + Vec3(-std::cos(radR) * legLen * 0.5f, 0.10f, std::sin(radR) * legLen * 0.5f),
-                              {legThick, legThick, legLen}, col * 0.75f, 391.0f, -stepLift, -angR + deathRoll);
+            // Right leg
+            Vec3 hipR = { bodyW * 0.50f, bodyH * 0.55f, legZOffsets[i]};
+            appendRiggedBox(verts, position, mobYaw, hipR, { legLen * 0.45f, -0.12f, 0}, {legLen, legThick, legThick}, col * 0.75f, 391.0f, -stepPitch, legAngles[i] - 90.0f, 28.0f, 0, deathRoll);
         }
         return;
     }
@@ -786,32 +697,35 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         float bodyW = 0.40f;
         float bodyD = 0.48f;
 
-        // Yellow Legs & Feet
         Vec4 yellowLeg = {1.0f, 0.82f, 0.15f, col.w};
-        appendOrientedBox(verts, position, mobYaw, {-0.10f, legH * 0.5f, 0}, {0.06f, legH, 0.06f}, yellowLeg, 398.0f,  walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { 0.10f, legH * 0.5f, 0}, {0.06f, legH, 0.06f}, yellowLeg, 398.0f, -walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, {-0.10f, 0.02f, 0.04f}, {0.12f, 0.02f, 0.12f}, yellowLeg, 398.0f,  walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { 0.10f, 0.02f, 0.04f}, {0.12f, 0.02f, 0.12f}, yellowLeg, 398.0f, -walkSwing, deathRoll);
 
-        // White Body
-        Vec3 bodyPos = {0, legH + bodyH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW, bodyH, bodyD}, col, 390.0f, attackLunge, deathRoll);
+        // 2 Yellow Legs pivoting at hips
+        appendRiggedBox(verts, position, mobYaw, {-0.10f, legH, 0}, {0, -legH * 0.5f, 0}, {0.06f, legH, 0.06f}, yellowLeg, 398.0f,  walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { 0.10f, legH, 0}, {0, -legH * 0.5f, 0}, {0.06f, legH, 0.06f}, yellowLeg, 398.0f, -walkSwing, 0, 0, 0, deathRoll);
 
-        // Flapping Wings
-        float wingFlap = std::sin(animTime * 16.0f) * 28.0f;
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(-bodyW * 0.52f, 0, 0), {0.04f, 0.28f, 0.36f}, col * 0.95f, 390.0f, 0, wingFlap + deathRoll);
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3( bodyW * 0.52f, 0, 0), {0.04f, 0.28f, 0.36f}, col * 0.95f, 390.0f, 0, -wingFlap + deathRoll);
+        // Yellow Feet Plates
+        appendRiggedBox(verts, position, mobYaw, {-0.10f, legH, 0}, {0, -legH + 0.015f, 0.04f}, {0.12f, 0.03f, 0.12f}, yellowLeg, 398.0f,  walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { 0.10f, legH, 0}, {0, -legH + 0.015f, 0.04f}, {0.12f, 0.03f, 0.12f}, yellowLeg, 398.0f, -walkSwing, 0, 0, 0, deathRoll);
 
-        // Head
-        Vec3 headPos = {0, legH + bodyH * 0.85f, 0.22f};
-        appendOrientedBox(verts, position, mobYaw, headPos, {0.24f, 0.30f, 0.25f}, col, 390.0f, attackLunge, deathRoll);
+        // Torso
+        appendRiggedBox(verts, position, mobYaw, {0, legH, 0}, {0, bodyH * 0.5f, 0}, {bodyW, bodyH, bodyD}, col, 390.0f, 0, 0, 0, attackLunge, deathRoll);
+
+        // Flapping Wings pivoting at shoulders
+        float wingFlap = (hSpeed > 0.1f || !onGround) ? (std::sin(animTime * 24.0f) * 42.0f) : (std::sin(animTime * 2.0f) * 4.0f);
+        appendRiggedBox(verts, position, mobYaw, {-bodyW * 0.50f, legH + bodyH * 0.75f, 0}, {-0.02f, -0.14f, 0}, {0.04f, 0.28f, 0.36f}, col * 0.95f, 390.0f, 0, 0,  wingFlap, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { bodyW * 0.50f, legH + bodyH * 0.75f, 0}, { 0.02f, -0.14f, 0}, {0.04f, 0.28f, 0.36f}, col * 0.95f, 390.0f, 0, 0, -wingFlap, attackLunge, deathRoll);
+
+        // Head with peck bob
+        float peckPitch = std::sin(animTime * 10.0f) * 12.0f * (moveFactor > 0.05f ? moveFactor : 0.0f);
+        Vec3 chickenNeck = {0, legH + bodyH * 0.85f, 0.22f};
+        appendRiggedBox(verts, position, mobYaw, chickenNeck, {0, 0.14f, 0}, {0.24f, 0.28f, 0.25f}, col, 390.0f, peckPitch, 0, 0, attackLunge, deathRoll);
 
         // Yellow Beak
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -0.04f, 0.18f), {0.12f, 0.08f, 0.12f}, yellowLeg, 398.0f, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, chickenNeck, {0, 0.10f, 0.18f}, {0.12f, 0.08f, 0.12f}, yellowLeg, 398.0f, peckPitch, 0, 0, attackLunge, deathRoll);
 
-        // Red Wattle under beak
+        // Red Wattle
         Vec4 redWattle = {0.95f, 0.15f, 0.18f, col.w};
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -0.14f, 0.14f), {0.08f, 0.10f, 0.08f}, redWattle, 398.0f, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, chickenNeck, {0, 0.02f, 0.14f}, {0.08f, 0.10f, 0.08f}, redWattle, 398.0f, peckPitch, 0, 0, attackLunge, deathRoll);
         return;
     }
 
@@ -827,26 +741,23 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         float armW = 0.22f;
         float headSz = 0.50f;
 
-        // Blue Pants Legs
+        // Indigo Pants Legs swinging from hips
         Vec4 pantsCol = {0.16f, 0.16f, 0.52f, col.w};
-        appendOrientedBox(verts, position, mobYaw, {-0.13f, legH * 0.5f, 0}, {legW, legH, legW}, pantsCol, 398.0f,  walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { 0.13f, legH * 0.5f, 0}, {legW, legH, legW}, pantsCol, 398.0f, -walkSwing, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {-0.13f, legH, 0}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, pantsCol, 398.0f,  walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { 0.13f, legH, 0}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, pantsCol, 398.0f, -walkSwing, 0, 0, 0, deathRoll);
 
         // Cyan Tunic Torso
         Vec4 shirtCol = {0.0f, 0.65f, 0.65f, col.w};
-        Vec3 torsoPos = {0, legH + torsoH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoD}, shirtCol, 398.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH, 0}, {0, torsoH * 0.5f, 0}, {torsoW, torsoH, torsoD}, shirtCol, 398.0f, 0, 0, 0, attackLunge, deathRoll);
 
-        // Outstretched Arms (Classic Zombie -90 deg Pitch)
-        float armPitch = -90.0f;
-        Vec3 leftArmPos = {-torsoW * 0.58f, legH + torsoH * 0.75f, 0};
-        Vec3 rightArmPos = { torsoW * 0.58f, legH + torsoH * 0.75f, 0};
-        appendOrientedBox(verts, position, mobYaw, leftArmPos, {armW, torsoH, armW}, col, 398.0f, armPitch, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, rightArmPos, {armW, torsoH, armW}, col, 398.0f, armPitch, deathRoll);
+        // Outstretched Zombie Arms (-90 deg pitch with subtle swaying)
+        float armPitch = -90.0f + std::sin(animTime * 3.5f) * 5.0f;
+        float shoulderY = legH + torsoH * 0.90f;
+        appendRiggedBox(verts, position, mobYaw, {-torsoW * 0.58f, shoulderY, 0}, {0, -torsoH * 0.5f, 0}, {armW, torsoH, armW}, col, 398.0f, armPitch, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { torsoW * 0.58f, shoulderY, 0}, {0, -torsoH * 0.5f, 0}, {armW, torsoH, armW}, col, 398.0f, armPitch, 0, 0, attackLunge, deathRoll);
 
         // Head with Zombie Face (Layer 395)
-        Vec3 headPos = {0, legH + torsoH + headSz * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz, headSz}, col, 395.0f, attackLunge * 0.5f, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + torsoH, 0}, {0, headSz * 0.5f, 0}, {headSz, headSz, headSz}, col, 395.0f, 0, 0, 0, attackLunge * 0.5f, deathRoll);
         return;
     }
 
@@ -865,26 +776,22 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         Vec4 boneCol = {0.88f, 0.88f, 0.85f, col.w};
 
         // Thin Bone Legs
-        appendOrientedBox(verts, position, mobYaw, {-0.12f, legH * 0.5f, 0}, {legW, legH, legW}, boneCol, 394.0f,  walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { 0.12f, legH * 0.5f, 0}, {legW, legH, legW}, boneCol, 394.0f, -walkSwing, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {-0.12f, legH, 0}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, boneCol, 394.0f,  walkSwing, 0, 0, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { 0.12f, legH, 0}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, boneCol, 394.0f, -walkSwing, 0, 0, 0, deathRoll);
 
         // Bone Ribcage Torso
-        Vec3 torsoPos = {0, legH + torsoH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoD}, boneCol, 394.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH, 0}, {0, torsoH * 0.5f, 0}, {torsoW, torsoH, torsoD}, boneCol, 394.0f, 0, 0, 0, attackLunge, deathRoll);
 
         // Arms: Left Aiming Forward holding Bow, Right drawn back
-        Vec3 leftArmPos = {-torsoW * 0.56f, legH + torsoH * 0.75f, 0};
-        Vec3 rightArmPos = { torsoW * 0.56f, legH + torsoH * 0.75f, 0};
-        appendOrientedBox(verts, position, mobYaw, leftArmPos, {armW, torsoH, armW}, boneCol, 394.0f, -85.0f, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, rightArmPos, {armW, torsoH, armW}, boneCol, 394.0f, -40.0f, deathRoll);
+        float shoulderY = legH + torsoH * 0.88f;
+        appendRiggedBox(verts, position, mobYaw, {-torsoW * 0.56f, shoulderY, 0}, {0, -torsoH * 0.5f, 0}, {armW, torsoH, armW}, boneCol, 394.0f, -85.0f, 12.0f, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, { torsoW * 0.56f, shoulderY, 0}, {0, -torsoH * 0.5f, 0}, {armW, torsoH, armW}, boneCol, 394.0f, -48.0f, -15.0f, 0, attackLunge, deathRoll);
 
         // Blocky Wooden Bow in Left Hand
-        Vec3 bowPos = leftArmPos + Vec3(-0.04f, 0, torsoH * 0.65f);
-        appendOrientedBox(verts, position, mobYaw, bowPos, {0.06f, 0.75f, 0.08f}, {0.55f, 0.35f, 0.18f, col.w}, 397.0f, -85.0f, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {-torsoW * 0.56f, shoulderY, 0}, {-0.04f, -torsoH * 0.80f, 0.10f}, {0.06f, 0.75f, 0.08f}, {0.55f, 0.35f, 0.18f, col.w}, 397.0f, -85.0f, 12.0f, 0, attackLunge, deathRoll);
 
         // Skull (Layer 394)
-        Vec3 headPos = {0, legH + torsoH + headSz * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz, headSz}, boneCol, 394.0f, attackLunge * 0.5f, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + torsoH, 0}, {0, headSz * 0.5f, 0}, {headSz, headSz, headSz}, boneCol, 394.0f, 0, 0, 0, attackLunge * 0.5f, deathRoll);
         return;
     }
 
@@ -900,84 +807,87 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
     float offX = bodyW * 0.35f;
     float offZ = bodyD * 0.34f;
 
-    // 4 Blocky Legs
-    appendOrientedBox(verts, position, mobYaw, {-offX, legH * 0.5f,  offZ}, {legW, legH, legW}, col * 0.85f, tIdx,  walkSwing, deathRoll);
-    appendOrientedBox(verts, position, mobYaw, { offX, legH * 0.5f,  offZ}, {legW, legH, legW}, col * 0.85f, tIdx, -walkSwing, deathRoll);
-    appendOrientedBox(verts, position, mobYaw, {-offX, legH * 0.5f, -offZ}, {legW, legH, legW}, col * 0.85f, tIdx, -walkSwing, deathRoll);
-    appendOrientedBox(verts, position, mobYaw, { offX, legH * 0.5f, -offZ}, {legW, legH, legW}, col * 0.85f, tIdx,  walkSwing, deathRoll);
+    // 4 Articulated Legs pivoting at hip height legH
+    appendRiggedBox(verts, position, mobYaw, {-offX, legH,  offZ}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, tIdx,  walkSwing, 0, 0, 0, deathRoll);
+    appendRiggedBox(verts, position, mobYaw, { offX, legH,  offZ}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, tIdx, -walkSwing, 0, 0, 0, deathRoll);
+    appendRiggedBox(verts, position, mobYaw, {-offX, legH, -offZ}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, tIdx, -walkSwing, 0, 0, 0, deathRoll);
+    appendRiggedBox(verts, position, mobYaw, { offX, legH, -offZ}, {0, -legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, tIdx,  walkSwing, 0, 0, 0, deathRoll);
 
     // Torso
-    Vec3 bodyPos = {0, legH + bodyH * 0.5f, 0};
-    appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW, bodyH, bodyD}, col, tIdx, attackLunge, deathRoll);
+    appendRiggedBox(verts, position, mobYaw, {0, legH + idleBob, 0}, {0, bodyH * 0.5f, 0}, {bodyW, bodyH, bodyD}, col, tIdx, 0, 0, 0, attackLunge, deathRoll);
 
-    // Head
+    // Head Neck Pivot
     float headSz = def.size.x * 0.50f;
-    Vec3 headPos = {0, legH + bodyH * 0.82f, offZ + headSz * 0.42f};
+    Vec3 neckPivot = {0, legH + bodyH * 0.78f + idleBob, offZ + 0.05f};
+    float headNod = std::sin(animTime * 2.0f) * 4.0f;
 
     // =========================
     // MINECRAFT PIG
     // =========================
     if (type == CreatureType::Pig) {
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.88f, headSz}, col, tIdx, attackLunge, deathRoll);
-        // Protruding Snout Box
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {0, headSz * 0.35f, headSz * 0.30f}, {headSz, headSz * 0.88f, headSz}, col, tIdx, headNod, 0, 0, attackLunge, deathRoll);
+        // Protruding 3D Snout
         Vec4 darkerPink = {0.90f, 0.55f, 0.60f, col.w};
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -headSz * 0.16f, headSz * 0.44f), {headSz * 0.50f, headSz * 0.32f, 0.10f}, darkerPink, 398.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {0, headSz * 0.18f, headSz * 0.78f}, {headSz * 0.50f, headSz * 0.32f, 0.10f}, darkerPink, 398.0f, headNod, 0, 0, attackLunge, deathRoll);
+
+        // Curly Tail
+        float tailWag = std::sin(animTime * 7.0f) * 20.0f;
+        appendRiggedBox(verts, position, mobYaw, {0, legH + bodyH * 0.80f, -offZ}, {0, 0, -0.06f}, {0.06f, 0.06f, 0.12f}, darkerPink, 398.0f, 0, tailWag, 0, 0, deathRoll);
     }
     // =========================
     // MINECRAFT COW
     // =========================
     else if (type == CreatureType::Cow) {
-        // Mottled White Patches
+        // Mottled White Patches on Torso
         Vec4 whitePatch = {0.95f, 0.95f, 0.95f, col.w};
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(-bodyW * 0.22f, bodyH * 0.15f, 0.10f), {bodyW * 0.52f, bodyH * 0.65f, bodyD * 0.40f}, whitePatch, tIdx, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3( bodyW * 0.26f, -bodyH * 0.10f, -0.20f), {bodyW * 0.42f, bodyH * 0.55f, bodyD * 0.38f}, whitePatch, tIdx, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + idleBob, 0}, {-bodyW * 0.22f, bodyH * 0.60f, 0.10f}, {bodyW * 0.52f, bodyH * 0.65f, bodyD * 0.40f}, whitePatch, tIdx, 0, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + idleBob, 0}, { bodyW * 0.26f, bodyH * 0.35f, -0.20f}, {bodyW * 0.42f, bodyH * 0.55f, bodyD * 0.38f}, whitePatch, tIdx, 0, 0, 0, attackLunge, deathRoll);
 
         // Head
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.88f, headSz}, col, tIdx, attackLunge, deathRoll);
-        // Pink Snout
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {0, headSz * 0.38f, headSz * 0.28f}, {headSz, headSz * 0.88f, headSz}, col, tIdx, headNod, 0, 0, attackLunge, deathRoll);
+        // Pink Muzzle
         Vec4 pinkMuzzle = {0.95f, 0.72f, 0.75f, col.w};
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -headSz * 0.20f, headSz * 0.45f), {headSz * 0.68f, headSz * 0.42f, 0.12f}, pinkMuzzle, 398.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {0, headSz * 0.16f, headSz * 0.74f}, {headSz * 0.68f, headSz * 0.42f, 0.12f}, pinkMuzzle, 398.0f, headNod, 0, 0, attackLunge, deathRoll);
 
         // Blocky Horns
         Vec4 hornCol = {0.80f, 0.80f, 0.78f, col.w};
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-headSz * 0.40f, headSz * 0.45f, 0), {0.08f, 0.16f, 0.08f}, hornCol, 394.0f, 0, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3( headSz * 0.40f, headSz * 0.45f, 0), {0.08f, 0.16f, 0.08f}, hornCol, 394.0f, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {-headSz * 0.40f, headSz * 0.80f, headSz * 0.20f}, {0.08f, 0.16f, 0.08f}, hornCol, 394.0f, headNod, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckPivot, { headSz * 0.40f, headSz * 0.80f, headSz * 0.20f}, {0.08f, 0.16f, 0.08f}, hornCol, 394.0f, headNod, 0, 0, attackLunge, deathRoll);
 
         // Pink Udder beneath belly
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(0, -bodyH * 0.42f, -bodyD * 0.20f), {bodyW * 0.35f, 0.12f, bodyD * 0.25f}, pinkMuzzle, 398.0f, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + idleBob, 0}, {0, 0.08f, -bodyD * 0.22f}, {bodyW * 0.35f, 0.12f, bodyD * 0.25f}, pinkMuzzle, 398.0f, 0, 0, 0, attackLunge, deathRoll);
     }
     // =========================
     // MINECRAFT SHEEP
     // =========================
     else if (type == CreatureType::Sheep) {
         // Big Fluffy Outer Wool Coat
-        appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW * 1.25f, bodyH * 1.22f, bodyD * 1.15f}, {1.05f, 1.05f, 1.05f, col.w}, 390.0f, attackLunge, deathRoll);
-        // Exposed Head & Ears
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz * 0.82f, headSz * 0.82f, headSz * 0.82f}, {0.85f, 0.80f, 0.78f, col.w}, 390.0f, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, {0, legH + idleBob, 0}, {0, bodyH * 0.5f, 0}, {bodyW * 1.22f, bodyH * 1.20f, bodyD * 1.12f}, {1.05f, 1.05f, 1.05f, col.w}, 390.0f, 0, 0, 0, attackLunge, deathRoll);
+        // Exposed Head
+        appendRiggedBox(verts, position, mobYaw, neckPivot, {0, headSz * 0.35f, headSz * 0.30f}, {headSz * 0.82f, headSz * 0.82f, headSz * 0.82f}, {0.85f, 0.80f, 0.78f, col.w}, 390.0f, headNod, 0, 0, attackLunge, deathRoll);
     }
     // =========================
     // MINECRAFT HORSE
     // =========================
     else if (type == CreatureType::Horse) {
         // Arched Neck
-        Vec3 neckPos = bodyPos + Vec3(0, bodyH * 0.55f, offZ * 0.70f);
-        appendOrientedBox(verts, position, mobYaw, neckPos, {bodyW * 0.38f, bodyH * 0.85f, bodyD * 0.45f}, col, tIdx, -32.0f + attackLunge, deathRoll);
+        Vec3 neckBase = {0, legH + bodyH * 0.65f + idleBob, offZ * 0.70f};
+        appendRiggedBox(verts, position, mobYaw, neckBase, {0, bodyH * 0.40f, 0.12f}, {bodyW * 0.38f, bodyH * 0.85f, bodyD * 0.45f}, col, tIdx, -32.0f, 0, 0, attackLunge, deathRoll);
 
         // Head atop neck
-        Vec3 horseHeadPos = neckPos + Vec3(0, bodyH * 0.58f, 0.28f);
-        appendOrientedBox(verts, position, mobYaw, horseHeadPos, {headSz * 0.75f, headSz * 0.75f, headSz * 1.15f}, col, tIdx, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckBase, {0, bodyH * 0.80f, 0.36f}, {headSz * 0.75f, headSz * 0.75f, headSz * 1.15f}, col, tIdx, 0, 0, 0, attackLunge, deathRoll);
 
         // Dark Mane
         Vec4 maneCol = {0.18f, 0.14f, 0.12f, col.w};
-        appendOrientedBox(verts, position, mobYaw, neckPos + Vec3(0, bodyH * 0.25f, -bodyD * 0.18f), {0.10f, bodyH * 0.82f, 0.14f}, maneCol, 390.0f, -32.0f + attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckBase, {0, bodyH * 0.45f, -0.06f}, {0.10f, bodyH * 0.82f, 0.14f}, maneCol, 390.0f, -32.0f, 0, 0, attackLunge, deathRoll);
 
         // Ears
-        appendOrientedBox(verts, position, mobYaw, horseHeadPos + Vec3(-headSz * 0.22f, headSz * 0.42f, -0.15f), {0.06f, 0.16f, 0.06f}, col, tIdx, 0, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, horseHeadPos + Vec3( headSz * 0.22f, headSz * 0.42f, -0.15f), {0.06f, 0.16f, 0.06f}, col, tIdx, 0, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckBase, {-headSz * 0.22f, bodyH * 1.05f, 0.22f}, {0.06f, 0.16f, 0.06f}, col, tIdx, 0, 0, 0, attackLunge, deathRoll);
+        appendRiggedBox(verts, position, mobYaw, neckBase, { headSz * 0.22f, bodyH * 1.05f, 0.22f}, {0.06f, 0.16f, 0.06f}, col, tIdx, 0, 0, 0, attackLunge, deathRoll);
 
-        // Tail
-        float tailSway = std::sin(animTime * 6.0f) * 18.0f;
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.20f, -bodyD * 0.52f), {0.12f, bodyH * 0.95f, 0.14f}, maneCol, 390.0f, 25.0f, tailSway + deathRoll);
+        // Tail swishing
+        float tailSway = std::sin(animTime * 6.0f) * 22.0f;
+        appendRiggedBox(verts, position, mobYaw, {0, legH + bodyH * 0.75f + idleBob, -offZ * 0.95f}, {0, -bodyH * 0.40f, -0.08f}, {0.12f, bodyH * 0.85f, 0.14f}, maneCol, 390.0f, 22.0f, tailSway, 0, attackLunge, deathRoll);
     }
 }
 

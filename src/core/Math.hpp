@@ -288,7 +288,15 @@ struct AABB {
     AABB() : min(0, 0, 0), max(0, 0, 0) {}
     AABB(const Vec3& min, const Vec3& max) : min(min), max(max) {}
 
+    // Strict intersection (open intervals): zero-thickness contact is not an overlap
     bool intersects(const AABB& o) const {
+        return (min.x < o.max.x && max.x > o.min.x) &&
+               (min.y < o.max.y && max.y > o.min.y) &&
+               (min.z < o.max.z && max.z > o.min.z);
+    }
+
+    // Inclusive intersection (closed intervals)
+    bool intersectsInclusive(const AABB& o) const {
         return (min.x <= o.max.x && max.x >= o.min.x) &&
                (min.y <= o.max.y && max.y >= o.min.y) &&
                (min.z <= o.max.z && max.z >= o.min.z);
@@ -302,6 +310,65 @@ struct AABB {
 
     AABB offset(const Vec3& off) const {
         return AABB(min + off, max + off);
+    }
+
+    AABB expand(float dx, float dy, float dz) const {
+        Vec3 newMin = min;
+        Vec3 newMax = max;
+        if (dx < 0.0f) newMin.x += dx;
+        if (dx > 0.0f) newMax.x += dx;
+        if (dy < 0.0f) newMin.y += dy;
+        if (dy > 0.0f) newMax.y += dy;
+        if (dz < 0.0f) newMin.z += dz;
+        if (dz > 0.0f) newMax.z += dz;
+        return AABB(newMin, newMax);
+    }
+
+    // Swept X-axis offset calculation against another AABB
+    float calculateXOffset(const AABB& other, float offset) const {
+        if (other.max.y <= min.y || other.min.y >= max.y) return offset;
+        if (other.max.z <= min.z || other.min.z >= max.z) return offset;
+        if (offset > 0.0f && other.min.x >= max.x) {
+            float d = (other.min.x - max.x) - 0.0001f;
+            if (d < 0.0f) d = 0.0f;
+            if (d < offset) offset = d;
+        } else if (offset < 0.0f && other.max.x <= min.x) {
+            float d = (other.max.x - min.x) + 0.0001f;
+            if (d > 0.0f) d = 0.0f;
+            if (d > offset) offset = d;
+        }
+        return offset;
+    }
+
+    // Swept Y-axis offset calculation against another AABB
+    float calculateYOffset(const AABB& other, float offset) const {
+        if (other.max.x <= min.x || other.min.x >= max.x) return offset;
+        if (other.max.z <= min.z || other.min.z >= max.z) return offset;
+        if (offset > 0.0f && other.min.y >= max.y) {
+            float d = (other.min.y - max.y) - 0.0001f;
+            if (d < 0.0f) d = 0.0f;
+            if (d < offset) offset = d;
+        } else if (offset < 0.0f && other.max.y <= min.y) {
+            float d = (other.max.y - min.y);
+            if (d > offset) offset = d;
+        }
+        return offset;
+    }
+
+    // Swept Z-axis offset calculation against another AABB
+    float calculateZOffset(const AABB& other, float offset) const {
+        if (other.max.x <= min.x || other.min.x >= max.x) return offset;
+        if (other.max.y <= min.y || other.min.y >= max.y) return offset;
+        if (offset > 0.0f && other.min.z >= max.z) {
+            float d = (other.min.z - max.z) - 0.0001f;
+            if (d < 0.0f) d = 0.0f;
+            if (d < offset) offset = d;
+        } else if (offset < 0.0f && other.max.z <= min.z) {
+            float d = (other.max.z - min.z) + 0.0001f;
+            if (d > 0.0f) d = 0.0f;
+            if (d > offset) offset = d;
+        }
+        return offset;
     }
 };
 

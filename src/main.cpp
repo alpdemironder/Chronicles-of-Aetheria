@@ -4,6 +4,8 @@
 #include <vector>
 #include <memory>
 #include <cmath>
+#include <random>
+#include <chrono>
 
 #include "core/Math.hpp"
 #include "core/Window.hpp"
@@ -211,6 +213,12 @@ int main(int argc, char* argv[]) {
     });
 
     chatUI.setOnSendMessage([&](const std::string& msg) {
+        if (msg == "/seed" || msg == "seed" || msg == "/worldseed") {
+            uint32_t currentSeed = world ? world->getSeed() : 0;
+            std::string seedMsg = "[DUNYA SEEDI] Procedural Seed: " + std::to_string(currentSeed) + " (F3 ile detayli gorebilirsiniz)";
+            chatUI.addMessage("System", seedMsg, {0.35f, 0.95f, 0.45f, 1.0f});
+            return;
+        }
         if (netClient->isConnected()) {
             netClient->sendChat(msg);
         } else {
@@ -223,11 +231,42 @@ int main(int argc, char* argv[]) {
         irisShaderUI.setOpen(true);
     });
 
+    GLBuffer creatureBuffer;
+    GLBuffer itemBuffer;
+    std::vector<std::unique_ptr<ItemEntity>> droppedItems;
+    std::vector<std::unique_ptr<CaptureSphere>> captureSpheres;
+
     enum class GameState { MainMenu, Playing };
     GameState gameState = GameState::MainMenu;
 
+    auto generateRandomSeed = []() -> uint32_t {
+        std::random_device rd;
+        uint32_t s1 = rd();
+        uint32_t s2 = static_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        uint32_t seed = s1 ^ s2;
+        if (seed == 0) seed = 123456789;
+        return seed;
+    };
+
+    auto loadWorldWithSeed = [&](uint32_t newSeed) {
+        std::cout << "[World] Generating and loading procedural world with Seed: " << newSeed << std::endl;
+        world = std::make_unique<World>(newSeed);
+        buildingMgr = std::make_unique<BuildingManager>(world.get(), audio.get());
+        int spawnY = world->getHighestBlock(0, 0);
+        player.setPosition(Vec3(0.0f, static_cast<float>(spawnY) + 1.8f, 0.0f));
+        player.setVelocity(Vec3(0.0f, 0.0f, 0.0f));
+        camera.setPosition(player.getPosition());
+        creatures.clear();
+        mobSpawner.spawnInitial(world.get(), player.getPosition(), creatures);
+        droppedItems.clear();
+        captureSpheres.clear();
+        ChestManager::instance().clearAll();
+    };
+
     MainMenuUI mainMenu;
     mainMenu.setOnPlay([&]() {
+        uint32_t randomSeed = generateRandomSeed();
+        loadWorldWithSeed(randomSeed);
         gameState = GameState::Playing;
         window->setCursorLocked(true);
     });
@@ -259,15 +298,10 @@ int main(int argc, char* argv[]) {
             if (netClient->isConnected()) netClient->disconnect();
             if (localServer.isRunning()) localServer.stopAsync();
         }
-        if (seed != 0 && world && world->getSeed() != seed) {
-            world = std::make_unique<World>(seed);
-            buildingMgr = std::make_unique<BuildingManager>(world.get(), audio.get());
-            int spawnY = world->getHighestBlock(0, 0);
-            player.setPosition(Vec3(0.0f, static_cast<float>(spawnY) + 1.8f, 0.0f));
-            camera.setPosition(player.getPosition());
-            creatures.clear();
-            mobSpawner.spawnInitial(world.get(), player.getPosition(), creatures);
+        if (seed == 0) {
+            seed = generateRandomSeed();
         }
+        loadWorldWithSeed(seed);
         gameState = GameState::Playing;
         window->setCursorLocked(true);
     });
@@ -298,11 +332,6 @@ int main(int argc, char* argv[]) {
         gameState = GameState::MainMenu;
         window->setCursorLocked(false);
     });
-
-    GLBuffer creatureBuffer;
-    GLBuffer itemBuffer;
-    std::vector<std::unique_ptr<ItemEntity>> droppedItems;
-    std::vector<std::unique_ptr<CaptureSphere>> captureSpheres;
 
     // Minecraft-Style Continuous Block Mining State
     float miningProgress = 0.0f;

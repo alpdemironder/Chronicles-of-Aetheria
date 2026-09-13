@@ -35,41 +35,45 @@ void Entity::update(World* world, float dt) {
     resolveCollisions(world, delta);
 }
 
+#include <vector>
+
 void Entity::resolveCollisions(World* world, const Vec3& delta) {
     onGround = false;
+    if (!world) {
+        position += delta;
+        return;
+    }
 
-    // 1. Move Y first
-    position.y += delta.y;
-    AABB boxY = getAABB();
+    // 0. Anti-Clipping Recovery Guard:
+    // If the entity is currently intersecting solid blocks (e.g. spawned inside or trapped),
+    // smoothly pop them upwards out of the solid block if headroom exists.
+    AABB curBox = getAABB();
+    int curMinX = static_cast<int>(std::floor(curBox.min.x + 0.001f));
+    int curMaxX = static_cast<int>(std::floor(curBox.max.x - 0.001f));
+    int curMinY = static_cast<int>(std::floor(curBox.min.y + 0.001f));
+    int curMaxY = static_cast<int>(std::floor(curBox.max.y - 0.001f));
+    int curMinZ = static_cast<int>(std::floor(curBox.min.z + 0.001f));
+    int curMaxZ = static_cast<int>(std::floor(curBox.max.z - 0.001f));
 
-    int minX = static_cast<int>(std::floor(boxY.min.x));
-    int maxX = static_cast<int>(std::floor(boxY.max.x));
-    int minY = static_cast<int>(std::floor(boxY.min.y));
-    int maxY = static_cast<int>(std::floor(boxY.max.y));
-    int minZ = static_cast<int>(std::floor(boxY.min.z));
-    int maxZ = static_cast<int>(std::floor(boxY.max.z));
-
-    for (int y = minY; y <= maxY; ++y) {
-        for (int z = minZ; z <= maxZ; ++z) {
-            for (int x = minX; x <= maxX; ++x) {
+    for (int y = curMinY; y <= curMaxY; ++y) {
+        for (int z = curMinZ; z <= curMaxZ; ++z) {
+            for (int x = curMinX; x <= curMaxX; ++x) {
                 if (isSolidBlock(world, x, y, z)) {
-                    AABB blockBox(Vec3(x, y, z), Vec3(x + 1, y + 1, z + 1));
-                    if (boxY.intersects(blockBox)) {
-                        if (delta.y < 0.0f) {
-                            position.y = static_cast<float>(y + 1);
-                            velocity.y = 0.0f;
-                            onGround = true;
-                        } else if (delta.y > 0.0f) {
-                            position.y = static_cast<float>(y) - size.y;
-                            velocity.y = 0.0f;
+                    AABB blk(Vec3(x, y, z), Vec3(x + 1, y + 1, z + 1));
+                    if (curBox.intersects(blk)) {
+                        float popY = static_cast<float>(y + 1);
+                        if (popY >= position.y && popY - position.y <= 1.25f) {
+                            position.y = popY;
+                            curBox = getAABB();
                         }
-                        boxY = getAABB();
                     }
                 }
             }
         }
     }
 
+    AABB originalBox = getAABB();
+    AABB box = originalBox;
     Vec3 moveDelta = delta;
 
     // Ledge / Edge fall protection when sneaking/crouching on ground (Minecraft sneak)
@@ -77,7 +81,6 @@ void Entity::resolveCollisions(World* world, const Vec3& delta) {
         Vec3 halfSize = { size.x * 0.5f, 0.0f, size.z * 0.5f };
         int yUnder = static_cast<int>(std::floor(position.y - 0.2f));
 
-        // Test X delta
         if (std::abs(moveDelta.x) > 0.0001f) {
             bool groundUnderX = false;
             int testMinX = static_cast<int>(std::floor(position.x + moveDelta.x - halfSize.x));
@@ -101,7 +104,6 @@ void Entity::resolveCollisions(World* world, const Vec3& delta) {
             }
         }
 
-        // Test Z delta
         if (std::abs(moveDelta.z) > 0.0001f) {
             bool groundUnderZ = false;
             int testMinX = static_cast<int>(std::floor(position.x - halfSize.x));
@@ -126,68 +128,105 @@ void Entity::resolveCollisions(World* world, const Vec3& delta) {
         }
     }
 
-    // 2. Move X
-    position.x += moveDelta.x;
-    AABB boxX = getAABB();
-    minX = static_cast<int>(std::floor(boxX.min.x));
-    maxX = static_cast<int>(std::floor(boxX.max.x));
-    minY = static_cast<int>(std::floor(boxX.min.y));
-    maxY = static_cast<int>(std::floor(boxX.max.y));
-    minZ = static_cast<int>(std::floor(boxX.min.z));
-    maxZ = static_cast<int>(std::floor(boxX.max.z));
+    // Broadphase: Gather all solid blocks within the expanded movement bounding box
+    AABB broadphase = box.expand(moveDelta.x, moveDelta.y, moveDelta.z);
+    broadphase.max.y += stepHeight + 0.1f;
+    broadphase.min.y -= 0.5f;
 
-    for (int y = minY; y <= maxY; ++y) {
-        for (int z = minZ; z <= maxZ; ++z) {
-            for (int x = minX; x <= maxX; ++x) {
+    int scanMinX = static_cast<int>(std::floor(broadphase.min.x)) - 1;
+    int scanMaxX = static_cast<int>(std::floor(broadphase.max.x)) + 1;
+    int scanMinY = std::max(0, static_cast<int>(std::floor(broadphase.min.y)) - 1);
+    int scanMaxY = std::min(CHUNK_Y - 1, static_cast<int>(std::floor(broadphase.max.y)) + 1);
+    int scanMinZ = static_cast<int>(std::floor(broadphase.min.z)) - 1;
+    int scanMaxZ = static_cast<int>(std::floor(broadphase.max.z)) + 1;
+
+    std::vector<AABB> solidBoxes;
+    solidBoxes.reserve(64);
+    for (int y = scanMinY; y <= scanMaxY; ++y) {
+        for (int z = scanMinZ; z <= scanMaxZ; ++z) {
+            for (int x = scanMinX; x <= scanMaxX; ++x) {
                 if (isSolidBlock(world, x, y, z)) {
-                    AABB blockBox(Vec3(x, y, z), Vec3(x + 1, y + 1, z + 1));
-                    if (boxX.intersects(blockBox)) {
-                        // Step-up attempt
-                        float climbDist = static_cast<float>(y + 1) - position.y;
-                        if (onGround && climbDist > 0.0f && climbDist <= stepHeight && !isSolidBlock(world, x, y + 1, z)) {
-                            position.y = static_cast<float>(y + 1);
-                        } else {
-                            if (moveDelta.x > 0.0f) position.x = static_cast<float>(x) - size.x * 0.5f;
-                            else if (moveDelta.x < 0.0f) position.x = static_cast<float>(x + 1) + size.x * 0.5f;
-                            velocity.x = 0.0f;
-                        }
-                        boxX = getAABB();
-                    }
+                    solidBoxes.emplace_back(Vec3(x, y, z), Vec3(x + 1, y + 1, z + 1));
                 }
             }
         }
     }
 
-    // 3. Move Z
-    position.z += moveDelta.z;
-    AABB boxZ = getAABB();
-    minX = static_cast<int>(std::floor(boxZ.min.x));
-    maxX = static_cast<int>(std::floor(boxZ.max.x));
-    minY = static_cast<int>(std::floor(boxZ.min.y));
-    maxY = static_cast<int>(std::floor(boxZ.max.y));
-    minZ = static_cast<int>(std::floor(boxZ.min.z));
-    maxZ = static_cast<int>(std::floor(boxZ.max.z));
+    // 1. Move Y first (Swept Y offset)
+    float dy = moveDelta.y;
+    for (const auto& blk : solidBoxes) {
+        dy = box.calculateYOffset(blk, dy);
+    }
+    box = box.offset(Vec3(0, dy, 0));
+    if (moveDelta.y != dy) {
+        velocity.y = 0.0f;
+        if (moveDelta.y < 0.0f) {
+            onGround = true;
+        }
+    } else {
+        onGround = false;
+    }
 
-    for (int y = minY; y <= maxY; ++y) {
-        for (int z = minZ; z <= maxZ; ++z) {
-            for (int x = minX; x <= maxX; ++x) {
-                if (isSolidBlock(world, x, y, z)) {
-                    AABB blockBox(Vec3(x, y, z), Vec3(x + 1, y + 1, z + 1));
-                    if (boxZ.intersects(blockBox)) {
-                        float climbDist = static_cast<float>(y + 1) - position.y;
-                        if (onGround && climbDist > 0.0f && climbDist <= stepHeight && !isSolidBlock(world, x, y + 1, z)) {
-                            position.y = static_cast<float>(y + 1);
-                        } else {
-                            if (moveDelta.z > 0.0f) position.z = static_cast<float>(z) - size.z * 0.5f;
-                            else if (moveDelta.z < 0.0f) position.z = static_cast<float>(z + 1) + size.z * 0.5f;
-                            velocity.z = 0.0f;
-                        }
-                        boxZ = getAABB();
-                    }
-                }
-            }
+    // 2. Move X (Swept X offset)
+    float dx = moveDelta.x;
+    for (const auto& blk : solidBoxes) {
+        dx = box.calculateXOffset(blk, dx);
+    }
+    box = box.offset(Vec3(dx, 0, 0));
+    if (moveDelta.x != dx) {
+        velocity.x = 0.0f;
+    }
+
+    // 3. Move Z (Swept Z offset)
+    float dz = moveDelta.z;
+    for (const auto& blk : solidBoxes) {
+        dz = box.calculateZOffset(blk, dz);
+    }
+    box = box.offset(Vec3(0, 0, dz));
+    if (moveDelta.z != dz) {
+        velocity.z = 0.0f;
+    }
+
+    // 4. Minecraft Step-Up Logic (Smoothly step over 0.5 - 1.0 block slabs and stairs)
+    bool collidedHorizontally = (moveDelta.x != dx || moveDelta.z != dz);
+    if (onGround && collidedHorizontally && stepHeight > 0.0f) {
+        AABB stepBox = originalBox;
+        float stepUpY = stepHeight;
+        for (const auto& blk : solidBoxes) {
+            stepUpY = stepBox.calculateYOffset(blk, stepUpY);
+        }
+        stepBox = stepBox.offset(Vec3(0, stepUpY, 0));
+
+        float stepDx = moveDelta.x;
+        for (const auto& blk : solidBoxes) {
+            stepDx = stepBox.calculateXOffset(blk, stepDx);
+        }
+        stepBox = stepBox.offset(Vec3(stepDx, 0, 0));
+
+        float stepDz = moveDelta.z;
+        for (const auto& blk : solidBoxes) {
+            stepDz = stepBox.calculateZOffset(blk, stepDz);
+        }
+        stepBox = stepBox.offset(Vec3(0, 0, stepDz));
+
+        float stepDownY = -stepUpY;
+        for (const auto& blk : solidBoxes) {
+            stepDownY = stepBox.calculateYOffset(blk, stepDownY);
+        }
+        stepBox = stepBox.offset(Vec3(0, stepDownY, 0));
+
+        float flatDistSq = dx * dx + dz * dz;
+        float stepDistSq = stepDx * stepDx + stepDz * stepDz;
+
+        if (stepDistSq > flatDistSq) {
+            box = stepBox;
         }
     }
+
+    // Update entity position from solved bounding box
+    position.x = (box.min.x + box.max.x) * 0.5f;
+    position.y = box.min.y;
+    position.z = (box.min.z + box.max.z) * 0.5f;
 }
 
 } // namespace Aetheria

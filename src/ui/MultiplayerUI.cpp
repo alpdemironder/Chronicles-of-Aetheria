@@ -241,7 +241,11 @@ void MultiplayerUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
 
             // Random seed button
             if (drawButton(ui, contentX + 360.0f, contentY + 145.0f, 130.0f, 34.0f, "RASTGELE SEED", false, mouseX, mouseY, mouseLeftClicked)) {
-                newWorldSeed = std::to_string(1000 + (std::rand() % 9000));
+                uint32_t r1 = static_cast<uint32_t>(std::rand()) ^ (static_cast<uint32_t>(std::rand()) << 15);
+                uint32_t r2 = static_cast<uint32_t>(std::rand()) << 30;
+                uint32_t r = (r1 ^ r2) ^ static_cast<uint32_t>(std::rand() * 1664525u + 1013904223u);
+                if (r == 0) r = 133742u;
+                newWorldSeed = std::to_string(r);
             }
 
             // Create submit button

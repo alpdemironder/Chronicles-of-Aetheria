@@ -109,6 +109,23 @@ An advanced **C++17 OpenGL 3.3 Core Profile Voxel RPG Sandbox** that blends the 
 - **Hardware Mipmapping & 16x Anisotropic Filtering**: Generates full trilinear mipmap chains on `GL_TEXTURE_2D_ARRAY` (`GL_LINEAR_MIPMAP_LINEAR`) with up to 16x anisotropic filtering, completely eliminating distant pixel swimming and moiré patterns.
 - **Analytic Sub-Texel Anti-Aliasing (`gl_voxel.frag`)**: Custom GPU shader algorithm computes continuous screen-space UV derivatives (`fwidth`, `textureGrad`) to keep voxel pixel art crisp and razor-sharp up close while anti-aliasing texel boundaries smoothly over 1 screen pixel.
 
+### 7. 🧬 Hierarchical Skeletal Rigging, Swept Physics & Random World Seeds
+- **Hierarchical Articulated Rigging (`appendRiggedBox`)**:
+  - Limbs and body parts pivot realistically at joint sockets (hips, shoulders, necks) with zero detachment.
+  - Walk cycles adapt smoothly to entity velocity ($v > 0.01\text{m/s}$).
+  - Mob features are dynamically articulated: Chicken side wings flap rapidly, Sheep head grazes with idle bobbing, Cow horns and snout nod with the skull, Horse mane and tail sway, Spider's 8 sprawling legs ripple in opposing 4-phase pairs, and Creeper swells by up to 32% during fuse ignition.
+- **Continuous Swept Voxel Physics & Zero-Clipping Engine**:
+  - Swept axis collision displacement calculates exact boundary clearances on Y, X, and Z axes without tunneling or clipping through terrain blocks.
+  - Strict open-interval AABB collision logic removes edge/corner false-positive sticking.
+  - Auto-step climbing (0.5m) verifies vertical headroom before ascension to prevent pushing entities into overhead ceilings.
+  - Anti-clipping penetration recovery gently pops stuck entities to safe open space if forcibly pushed into terrain.
+- **Procedural Random World Seed System**:
+  - World generation supports dynamic 32-bit seeds randomly seeded from hardware entropy (`std::random_device` $\oplus$ high-resolution clock).
+  - Singleplayer features a one-click random world generation launcher (`> PLAY SINGLEPLAYER (RASTGELE DUNYA) <`).
+  - Multiplayer interface includes an instant procedural seed randomizer button.
+  - In-game `/seed` and `/worldseed` chat commands display the active seed anytime.
+  - Comprehensive Minecraft `[F3]` debug screen displays real-time FPS, sub-block XYZ coordinates, block coordinates, chunk offset, compass facing direction, current biome, and the active procedural seed.
+
 ---
 
 ## 🚀 Building & Running
@@ -143,7 +160,10 @@ The executable will be built directly to `bin\AetheriaRPG.exe`.
 | **V** | Cycle Companion Stance (`Follow` -> `Stay` -> `Work`) |
 | **F** | Hammer Blueprint Scaffold |
 | **B** | Palworld Building Menu |
-| **T / Enter** | Open In-Game Co-op Chat |
+| **F3** | **Minecraft F3 Debug Ekranı (FPS, XYZ Koordinatları, Chunk, Biome, Dünya Seed'i)** |
+| **F1** | **Sinematik HUD Aç/Kapat (Toggle Clean HUD)** |
+| **F5** | **Üçüncü Şahıs / Birinci Şahıs Kamera (Toggle F5 Camera)** |
+| **T / Enter** | **Oyun İçi Sohbet (Chat & `/seed` Komutu)** |
 | **X** | Dismantle Mode |
 | **O** | Iris Shaderpack Menu |
 | **Esc** | Pause / Settings Menu |

@@ -475,6 +475,74 @@ void HUD::render(int screenWidth, int screenHeight,
 
         ui->drawText("[V] Stance", compX + compW - 68.0f, compY + 34.0f, 0.95f, {1.0f, 0.9f, 0.4f, 0.95f});
     }
+
+    // =========================================================================
+    // 8. MINECRAFT F3 DEBUG PANEL (Left Column Telemetry & World Seed)
+    // =========================================================================
+    if (showF3) {
+        float f3X = 14.0f;
+        float f3Y = 14.0f;
+        float f3Scale = 1.30f;
+        float f3LineH = 17.0f;
+
+        Vec4 textCol(0.92f, 0.95f, 1.0f, 1.0f);
+        Vec4 bgCol(0.03f, 0.05f, 0.08f, 0.70f);
+
+        auto drawF3Line = [&](const std::string& line, float x, float y, const Vec4& c = Vec4(0.92f, 0.95f, 1.0f, 1.0f)) {
+            float lineW = line.length() * 6.0f * f3Scale + 8.0f;
+            ui->drawRect(x - 4.0f, y - 2.0f, lineW, f3LineH, bgCol);
+            ui->drawText(line, x, y, f3Scale, c);
+        };
+
+        std::stringstream ss;
+        drawF3Line("Chronicles of Aetheria v2.4 (Modern OpenGL 3.3 Core Profile)", f3X, f3Y, {1.0f, 0.88f, 0.35f, 1.0f}); f3Y += f3LineH;
+
+        ss.str(""); ss << std::fixed << std::setprecision(1) << fps << " fps (" << (fps > 0.0f ? 1000.0f / fps : 0.0f) << " ms/frame)";
+        drawF3Line(ss.str(), f3X, f3Y); f3Y += f3LineH;
+
+        const Vec3& pPos = player.getPosition();
+        ss.str(""); ss << std::fixed << std::setprecision(3) << "XYZ: " << pPos.x << " / " << pPos.y << " / " << pPos.z;
+        drawF3Line(ss.str(), f3X, f3Y); f3Y += f3LineH;
+
+        int bx = static_cast<int>(std::floor(pPos.x));
+        int by = static_cast<int>(std::floor(pPos.y));
+        int bz = static_cast<int>(std::floor(pPos.z));
+        ss.str(""); ss << "Block: " << bx << " " << by << " " << bz;
+        drawF3Line(ss.str(), f3X, f3Y); f3Y += f3LineH;
+
+        int chunkX = bx >> 4;
+        int chunkZ = bz >> 4;
+        ss.str(""); ss << "Chunk: " << (bx & 15) << " " << (by & 15) << " " << (bz & 15) << " in " << chunkX << " " << chunkZ;
+        drawF3Line(ss.str(), f3X, f3Y); f3Y += f3LineH;
+
+        float pYaw = player.getYaw();
+        std::string facing = "North (Towards -Z)";
+        float normYaw = std::fmod(pYaw, 360.0f);
+        if (normYaw < 0.0f) normYaw += 360.0f;
+        if (normYaw >= 45.0f && normYaw < 135.0f) facing = "East (Towards +X)";
+        else if (normYaw >= 135.0f && normYaw < 225.0f) facing = "South (Towards +Z)";
+        else if (normYaw >= 225.0f && normYaw < 315.0f) facing = "West (Towards -X)";
+        ss.str(""); ss << "Facing: " << facing << " (Yaw: " << std::fixed << std::setprecision(1) << pYaw << ")";
+        drawF3Line(ss.str(), f3X, f3Y); f3Y += f3LineH;
+
+        uint8_t biomeId = world.getBiomeAt(pPos.x, pPos.z);
+        ss.str(""); ss << "Biome: " << BiomeRegistry::get(biomeId).name << " (ID: " << static_cast<int>(biomeId) << ")";
+        drawF3Line(ss.str(), f3X, f3Y); f3Y += f3LineH;
+
+        // WORLD SEED - Prominently highlighted
+        ss.str(""); ss << "Seed: " << world.getSeed() << " (Random Procedural Seed)";
+        ui->drawRect(f3X - 4.0f, f3Y - 2.0f, ss.str().length() * 6.0f * f3Scale + 8.0f, f3LineH, {0.08f, 0.25f, 0.45f, 0.90f});
+        ui->drawText(ss.str(), f3X, f3Y, f3Scale, {0.4f, 0.95f, 1.0f, 1.0f});
+        f3Y += f3LineH;
+
+        // Right column hardware info
+        float rightX = sw - 280.0f;
+        float rightY = 14.0f;
+        drawF3Line("GPU: Modern OpenGL 3.3 Core Profile", rightX, rightY); rightY += f3LineH;
+        drawF3Line("Display: " + std::to_string(screenWidth) + "x" + std::to_string(screenHeight), rightX, rightY); rightY += f3LineH;
+        drawF3Line("Physics: Swept Voxel Collision", rightX, rightY, {0.35f, 0.95f, 0.45f, 1.0f}); rightY += f3LineH;
+        drawF3Line("Active Shaders: Iris Pipeline", rightX, rightY); rightY += f3LineH;
+    }
 }
 
 } // namespace Aetheria

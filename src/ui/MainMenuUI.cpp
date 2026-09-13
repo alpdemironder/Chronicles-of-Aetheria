@@ -82,7 +82,7 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
     ui->drawTextCentered(subtitle, cx, titleY + 32.0f, 1.45f, {0.45f, 0.85f, 1.0f, 0.95f});
 
     // 3. Central Menu Buttons Deck
-    float btnW = 380.0f;
+    float btnW = 420.0f;
     float btnH = 38.0f;
     float btnGap = 8.0f;
     float btnX = cx - btnW * 0.5f;
@@ -94,8 +94,8 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
     ui->drawRect(btnX - chassisPad, startY - chassisPad, btnW + chassisPad * 2.0f, chassisH, {0.05f, 0.07f, 0.10f, 0.70f});
     ui->drawRectOutline(btnX - chassisPad, startY - chassisPad, btnW + chassisPad * 2.0f, chassisH, 1.5f, {0.20f, 0.35f, 0.55f, 0.5f});
 
-    // Play Button (Primary)
-    if (drawButton(ui, btnX, startY + 0 * (btnH + btnGap), btnW, btnH, "> PLAY SINGLEPLAYER <", true, mouseX, mouseY, mouseLeftClicked)) {
+    // Play Button (Primary - Generates a new random procedural world!)
+    if (drawButton(ui, btnX, startY + 0 * (btnH + btnGap), btnW, btnH, "> PLAY SINGLEPLAYER (RASTGELE DUNYA) <", true, mouseX, mouseY, mouseLeftClicked)) {
         if (onPlay) onPlay();
     }
 
