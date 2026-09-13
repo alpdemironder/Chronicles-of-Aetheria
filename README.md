@@ -9,6 +9,19 @@ An advanced **C++17 OpenGL 3.3 Core Profile Voxel RPG Sandbox** that blends the 
 
 ---
 
+## 📸 Gameplay Gallery
+
+![Procedural World Vista with Iris Shaders](docs/screenshots/world_vista.jpg)
+*Lush procedural biomes featuring cherry blossom groves, reflective river systems, and Iris shader atmospheric lighting.*
+
+![Palworld-Style Creature Taming](docs/screenshots/creature_taming.jpg)
+*Dynamic projectile capture mechanics with ballistic arc physics, real-time catch probability reticle, and mythical creature encounters.*
+
+![Modular Base Building & Companion Camp](docs/screenshots/base_building.jpg)
+*Modular multi-tier architectural construction, crafting workshops, and loyal tamed companion wolves guarding the base at golden hour.*
+
+---
+
 ## 🌟 Key Features
 
 ### 1. 🌍 Procedural Voxel Engine & Worldgen
