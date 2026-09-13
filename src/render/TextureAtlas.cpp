@@ -12,6 +12,61 @@ static inline float pixelHash(int x, int y, int seed) {
     return 1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f;
 }
 
+// Seamless wrapping smooth value noise (Cubic Hermite interpolation)
+static inline float smoothNoiseWrap(float x, float y, float period, int seed) {
+    int p = static_cast<int>(period);
+    if (p < 1) p = 16;
+    int ix = static_cast<int>(std::floor(x));
+    int iy = static_cast<int>(std::floor(y));
+
+    float fx = x - ix;
+    float fy = y - iy;
+
+    int x0 = (ix % p + p) % p;
+    int y0 = (iy % p + p) % p;
+    int x1 = (x0 + 1) % p;
+    int y1 = (y0 + 1) % p;
+
+    // Smooth Hermite curve (3t^2 - 2t^3)
+    float sx = fx * fx * (3.0f - 2.0f * fx);
+    float sy = fy * fy * (3.0f - 2.0f * fy);
+
+    float n00 = pixelHash(x0, y0, seed);
+    float n10 = pixelHash(x1, y0, seed);
+    float n01 = pixelHash(x0, y1, seed);
+    float n11 = pixelHash(x1, y1, seed);
+
+    float nx0 = n00 + sx * (n10 - n00);
+    float nx1 = n01 + sx * (n11 - n01);
+
+    return nx0 + sy * (nx1 - nx0);
+}
+
+// Multi-octave fractal noise with seamless wrapping
+static inline float fbmWrap(float x, float y, int seed, int octaves = 2) {
+    float val = 0.0f;
+    float amp = 0.65f;
+    float freq = 1.0f;
+    for (int o = 0; o < octaves; ++o) {
+        val += amp * smoothNoiseWrap(x * freq, y * freq, 16.0f, seed + o * 53);
+        amp *= 0.5f;
+        freq *= 2.0f;
+    }
+    return val;
+}
+
+// Subtle edge ambient shading for genuine 3D block presence
+static inline float edgeAO(int x, int y, float strength = 0.06f) {
+    float ao = 1.0f;
+    if (y == 15) ao -= strength * 1.4f;
+    else if (y == 14) ao -= strength * 0.6f;
+    if (x == 15) ao -= strength * 1.2f;
+    else if (x == 14) ao -= strength * 0.5f;
+    if (y == 0) ao += strength * 1.2f;
+    if (x == 0) ao += strength * 0.7f;
+    return ao;
+}
+
 static inline void setPix(uint8_t* p, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
     if (x < 0 || x >= 16 || y < 0 || y >= 16) return;
     int idx = (y * 16 + x) * 4;
@@ -47,14 +102,35 @@ bool TextureAtlas::init() {
     glBindTexture(GL_TEXTURE_2D_ARRAY, textureID);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, TEX_RES, TEX_RES, TOTAL_LAYERS, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixelData.data());
 
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // Generate hardware mipmaps for distance filtering
+    if (glGenerateMipmap) {
+        glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+    }
+
+    // Trilinear minification with linear magnification for sub-texel analytic anti-aliasing
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+    // Enable Anisotropic Filtering up to 16x
+    #ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+    #define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+    #endif
+    #ifndef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+    #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
+    #endif
+    GLfloat maxAniso = 1.0f;
+    glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
+    if (maxAniso > 1.0f) {
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(maxAniso, 16.0f));
+    }
+
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
-    std::cout << "TextureAtlas initialized with " << TOTAL_LAYERS << " distinct 16x16 pixel-art textures!" << std::endl;
+    std::cout << "TextureAtlas initialized with " << TOTAL_LAYERS
+              << " remastered 16x16 anti-aliased textures with Mipmapping & Anisotropic Filtering ("
+              << std::min(maxAniso, 16.0f) << "x)!" << std::endl;
     return true;
 }
 
@@ -276,33 +352,46 @@ static const uint8_t mcCobbleMatrix[16][16] = {
     {1,1,2,3,4,4,3,3,2,1,2,2,1,1,1,1}
 };
 
-// Fill with Stone (ID 36) base
+// Fill with Stone (ID 36) base - Smooth cloudy Jappa Minecraft stone with subtle micro-grit
 static void fillMinecraftStone(uint8_t* out, int seed = 36) {
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
-            float sn = pixelHash(x, y, seed);
-            if (sn > 0.65f) setPix(out, x, y, 146, 146, 146);
-            else if (sn > 0.15f) setPix(out, x, y, 128, 128, 128);
-            else if (sn > -0.35f) setPix(out, x, y, 114, 114, 114);
-            else if (sn > -0.75f) setPix(out, x, y, 98, 98, 98);
-            else setPix(out, x, y, 82, 82, 82);
+            float smooth = fbmWrap(x * 0.22f, y * 0.22f, seed, 2);
+            float grit = pixelHash(x, y, seed + 100) * 0.10f;
+            float val = smooth * 0.88f + grit;
+            float ao = edgeAO(x, y, 0.04f);
+
+            uint8_t g;
+            if (val > 0.38f) g = 142;
+            else if (val > 0.08f) g = 128;
+            else if (val > -0.22f) g = 116;
+            else if (val > -0.55f) g = 104;
+            else g = 92;
+
+            g = clampU8(g * ao);
+            setPix(out, x, y, g, g, g);
         }
     }
 }
 
-// Fill with Deepslate base
+// Fill with Deepslate base - Smooth horizontal slate strata
 static void fillMinecraftDeepslate(uint8_t* out, int seed = 45) {
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
-            bool isBand = (y % 4 == 0 || (x + y * 2) % 7 == 0);
-            float dn = pixelHash(x, y, seed) * 10.0f;
-            uint8_t baseG = isBand ? clampU8(42 + dn) : clampU8(60 + dn);
-            setPix(out, x, y, baseG, baseG, baseG + 4);
+            float wave = std::sin(y * 0.85f + smoothNoiseWrap(x * 0.35f, y * 0.2f, 16.0f, seed) * 1.4f);
+            float smooth = fbmWrap(x * 0.25f, y * 0.25f, seed + 10, 2);
+            float val = wave * 0.5f + smooth * 0.5f;
+            uint8_t g;
+            if (val > 0.40f) g = 74;
+            else if (val > 0.05f) g = 60;
+            else if (val > -0.35f) g = 48;
+            else g = 36;
+            setPix(out, x, y, g, g, g + 3);
         }
     }
 }
 
-// Fill with 4-board Wooden Planks
+// Fill with 4-board Wooden Planks - Smooth horizontal wood grain with board bevels
 static void fillMinecraftPlanks(uint8_t* out, const Vec4& mainCol, const Vec4& seamCol, const Vec4& hiCol, int seed = 72) {
     for (int y = 0; y < 16; ++y) {
         int boardIdx = y / 4;
@@ -311,17 +400,19 @@ static void fillMinecraftPlanks(uint8_t* out, const Vec4& mainCol, const Vec4& s
 
         for (int x = 0; x < 16; ++x) {
             bool isNail = ((boardIdx % 2 == 0 && (x == 2 || x == 14)) || (boardIdx % 2 == 1 && (x == 1 || x == 13))) && (y % 4 == 1);
-            float wn = pixelHash(x, y, seed) * 12.0f;
+            float grain = smoothNoiseWrap(x * 0.6f, y * 0.15f, 16.0f, seed + boardIdx * 19);
+            float wn = grain * 8.0f;
+
             if (isSeam) {
-                setPix(out, x, y, clampU8(seamCol.x * 255.0f + wn * 0.5f),
-                                  clampU8(seamCol.y * 255.0f + wn * 0.5f),
-                                  clampU8(seamCol.z * 255.0f + wn * 0.5f));
+                setPix(out, x, y, clampU8(seamCol.x * 255.0f + wn * 0.4f),
+                                  clampU8(seamCol.y * 255.0f + wn * 0.4f),
+                                  clampU8(seamCol.z * 255.0f + wn * 0.4f));
             } else if (isHi) {
-                setPix(out, x, y, clampU8(hiCol.x * 255.0f + wn),
-                                  clampU8(hiCol.y * 255.0f + wn),
-                                  clampU8(hiCol.z * 255.0f + wn));
+                setPix(out, x, y, clampU8(hiCol.x * 255.0f + wn * 0.6f),
+                                  clampU8(hiCol.y * 255.0f + wn * 0.6f),
+                                  clampU8(hiCol.z * 255.0f + wn * 0.6f));
             } else if (isNail) {
-                setPix(out, x, y, 55, 52, 50); // Dark iron nail
+                setPix(out, x, y, 52, 48, 46); // Dark iron nail
             } else {
                 setPix(out, x, y, clampU8(mainCol.x * 255.0f + wn),
                                   clampU8(mainCol.y * 255.0f + wn),
@@ -391,31 +482,41 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
                 if (y < grassOverhang[x]) {
-                    float gn = pixelHash(x, y, 101);
-                    if (y == 0 && gn > 0.25f) setPix(out, x, y, 134, 192, 67); // Lime green highlight
-                    else if (gn > 0.0f) setPix(out, x, y, 113, 170, 60);      // Mid lush green
-                    else if (gn > -0.5f) setPix(out, x, y, 89, 142, 47);      // Deep grass green
-                    else setPix(out, x, y, 56, 88, 30);                       // Dark grass shadow
+                    float gn = smoothNoiseWrap(x * 0.5f, y * 0.5f, 16.0f, 101);
+                    if (y == 0 && gn > 0.2f) setPix(out, x, y, 138, 198, 68); // Lime highlight
+                    else if (gn > 0.0f) setPix(out, x, y, 114, 172, 58);      // Mid lush green
+                    else if (gn > -0.4f) setPix(out, x, y, 90, 144, 46);      // Deep grass green
+                    else setPix(out, x, y, 68, 116, 34);                       // Dark grass shadow
                 } else {
-                    float dn = pixelHash(x, y, 202);
-                    if (dn > 0.55f) setPix(out, x, y, 134, 98, 62);           // Light earth clump
-                    else if (dn > 0.0f) setPix(out, x, y, 115, 83, 53);       // Main brown dirt
-                    else if (dn > -0.5f) setPix(out, x, y, 92, 65, 41);       // Dark dirt
-                    else setPix(out, x, y, 70, 49, 31);                       // Crevice shadow
+                    bool isShadow = (y == grassOverhang[x]); // Soft cast shadow directly under grass fringe
+                    float dn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 202);
+                    uint8_t r, g, b;
+                    if (dn > 0.35f)      { r = 138; g = 100; b = 64; } // Light earth clump
+                    else if (dn > 0.0f)  { r = 118; g = 85;  b = 54; } // Main brown dirt
+                    else if (dn > -0.4f) { r = 98;  g = 68;  b = 43; } // Dark dirt
+                    else                 { r = 78;  g = 54;  b = 34; } // Crevice shadow
+
+                    if (isShadow) {
+                        r = clampU8(r * 0.75f);
+                        g = clampU8(g * 0.75f);
+                        b = clampU8(b * 0.75f);
+                    }
+                    setPix(out, x, y, r, g, b);
                 }
             }
         }
         return;
     }
-    else if (bId == 2) { // Dirt - Authentic Minecraft dirt clumping
+    else if (bId == 2) { // Dirt - Authentic Minecraft smooth dirt clumping
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float dn = pixelHash(x, y, 202);
-                if (dn > 0.60f) setPix(out, x, y, 138, 100, 64);
-                else if (dn > 0.15f) setPix(out, x, y, 118, 85, 54);
-                else if (dn > -0.35f) setPix(out, x, y, 96, 68, 43);
-                else if (dn > -0.75f) setPix(out, x, y, 76, 54, 34);
-                else setPix(out, x, y, 58, 40, 25);
+                float dn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 202) * 0.7f +
+                           smoothNoiseWrap(x * 0.7f, y * 0.7f, 16.0f, 203) * 0.3f;
+                if (dn > 0.40f) setPix(out, x, y, 142, 104, 66);
+                else if (dn > 0.10f) setPix(out, x, y, 122, 88, 56);
+                else if (dn > -0.25f) setPix(out, x, y, 102, 72, 46);
+                else if (dn > -0.60f) setPix(out, x, y, 82, 58, 36);
+                else setPix(out, x, y, 66, 46, 28);
             }
         }
         return;
@@ -423,12 +524,14 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 3) { // Coarse Dirt - Dirt with stone pebble bits
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float dn = pixelHash(x, y, 303);
-                bool isPebble = (x % 5 == 1 && y % 5 == 2) || (x % 6 == 4 && y % 4 == 3);
-                if (isPebble) setPix(out, x, y, 115, 110, 105);
-                else if (dn > 0.3f) setPix(out, x, y, 118, 85, 54);
-                else if (dn > -0.3f) setPix(out, x, y, 92, 64, 40);
-                else setPix(out, x, y, 68, 46, 28);
+                float dn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 303);
+                bool isPebble = (x == 5 && y == 3) || (x == 6 && y == 3) ||
+                                (x == 11 && y == 9) || (x == 12 && y == 9) ||
+                                (x == 2 && y == 12);
+                if (isPebble) setPix(out, x, y, 120, 115, 110);
+                else if (dn > 0.25f) setPix(out, x, y, 122, 88, 56);
+                else if (dn > -0.25f) setPix(out, x, y, 98, 68, 42);
+                else setPix(out, x, y, 74, 50, 30);
             }
         }
         return;
@@ -436,11 +539,11 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 4) { // Podzol - Pine needle mulch top
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float pn = pixelHash(x, y, 404);
-                if (pn > 0.4f) setPix(out, x, y, 92, 62, 34);
-                else if (pn > -0.2f) setPix(out, x, y, 72, 48, 26);
-                else if (pn > -0.6f) setPix(out, x, y, 54, 34, 18);
-                else setPix(out, x, y, 40, 24, 12);
+                float pn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 404);
+                if (pn > 0.35f) setPix(out, x, y, 98, 66, 36);
+                else if (pn > -0.15f) setPix(out, x, y, 76, 50, 28);
+                else if (pn > -0.55f) setPix(out, x, y, 58, 36, 20);
+                else setPix(out, x, y, 42, 26, 14);
             }
         }
         return;
@@ -448,11 +551,11 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 5) { // Mycelium - Fungal violet earth
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float mn = pixelHash(x, y, 505);
-                if (mn > 0.4f) setPix(out, x, y, 160, 142, 172);
-                else if (mn > -0.1f) setPix(out, x, y, 140, 122, 150);
-                else if (mn > -0.5f) setPix(out, x, y, 115, 98, 125);
-                else setPix(out, x, y, 92, 78, 102);
+                float mn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 505);
+                if (mn > 0.35f) setPix(out, x, y, 162, 144, 174);
+                else if (mn > -0.10f) setPix(out, x, y, 142, 124, 152);
+                else if (mn > -0.50f) setPix(out, x, y, 118, 100, 126);
+                else setPix(out, x, y, 96, 80, 104);
             }
         }
         return;
@@ -460,8 +563,8 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 10) { // Clay - Bluish-gray smooth clay
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float cn = pixelHash(x, y, 10);
-                uint8_t g = clampU8(162.0f + cn * 14.0f);
+                float cn = smoothNoiseWrap(x * 0.3f, y * 0.3f, 16.0f, 10);
+                uint8_t g = clampU8(162.0f + cn * 12.0f);
                 setPix(out, x, y, g - 6, g - 2, g + 8);
             }
         }
@@ -470,12 +573,13 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 11) { // Sand - Fine yellow desert sand ripples
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float sn = pixelHash(x, y, 11);
-                float wave = std::sin(y * 0.9f + x * 0.35f);
-                if (sn + wave * 0.25f > 0.45f) setPix(out, x, y, 235, 226, 175);
-                else if (sn > -0.1f) setPix(out, x, y, 219, 207, 153);
-                else if (sn > -0.6f) setPix(out, x, y, 205, 191, 138);
-                else setPix(out, x, y, 188, 173, 120);
+                float wave = std::sin(y * 0.75f + std::sin(x * 0.45f) * 0.7f);
+                float sn = smoothNoiseWrap(x * 0.3f, y * 0.3f, 16.0f, 11);
+                float val = wave * 0.35f + sn * 0.65f;
+                if (val > 0.35f) setPix(out, x, y, 236, 226, 176);
+                else if (val > -0.10f) setPix(out, x, y, 222, 210, 156);
+                else if (val > -0.50f) setPix(out, x, y, 206, 192, 140);
+                else setPix(out, x, y, 190, 175, 124);
             }
         }
         return;
@@ -483,12 +587,13 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 12) { // Red Sand - Terracotta desert sand
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float sn = pixelHash(x, y, 12);
-                float wave = std::sin(y * 0.9f + x * 0.35f);
-                if (sn + wave * 0.25f > 0.45f) setPix(out, x, y, 215, 118, 55);
-                else if (sn > -0.1f) setPix(out, x, y, 195, 98, 42);
-                else if (sn > -0.6f) setPix(out, x, y, 175, 82, 34);
-                else setPix(out, x, y, 155, 68, 26);
+                float wave = std::sin(y * 0.75f + std::sin(x * 0.45f) * 0.7f);
+                float sn = smoothNoiseWrap(x * 0.3f, y * 0.3f, 16.0f, 12);
+                float val = wave * 0.35f + sn * 0.65f;
+                if (val > 0.35f) setPix(out, x, y, 216, 124, 60);
+                else if (val > -0.10f) setPix(out, x, y, 196, 102, 46);
+                else if (val > -0.50f) setPix(out, x, y, 176, 84, 36);
+                else setPix(out, x, y, 154, 68, 28);
             }
         }
         return;
@@ -496,12 +601,14 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 14) { // Gravel - Grayscale stone pebbles
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float gn = pixelHash(x, y, 14);
-                if (gn > 0.60f) setPix(out, x, y, 152, 144, 142);
-                else if (gn > 0.15f) setPix(out, x, y, 132, 124, 122);
-                else if (gn > -0.35f) setPix(out, x, y, 112, 104, 102);
-                else if (gn > -0.75f) setPix(out, x, y, 92, 84, 82);
-                else setPix(out, x, y, 72, 64, 62);
+                float gn = smoothNoiseWrap(x * 0.45f, y * 0.45f, 16.0f, 14);
+                float grit = pixelHash(x, y, 14) * 0.12f;
+                float val = gn * 0.88f + grit;
+                if (val > 0.40f) setPix(out, x, y, 152, 144, 142);
+                else if (val > 0.10f) setPix(out, x, y, 132, 124, 122);
+                else if (val > -0.25f) setPix(out, x, y, 112, 104, 102);
+                else if (val > -0.60f) setPix(out, x, y, 92, 84, 82);
+                else setPix(out, x, y, 74, 66, 64);
             }
         }
         return;
@@ -509,10 +616,10 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 16) { // Snow Block - Crisp pristine snow with soft blue shadows
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float n = pixelHash(x, y, 16);
-                if (n > 0.4f) setPix(out, x, y, 255, 255, 255);
-                else if (n > -0.3f) setPix(out, x, y, 245, 248, 252);
-                else setPix(out, x, y, 230, 238, 248);
+                float n = smoothNoiseWrap(x * 0.3f, y * 0.3f, 16.0f, 16);
+                if (n > 0.30f) setPix(out, x, y, 255, 255, 255);
+                else if (n > -0.25f) setPix(out, x, y, 245, 248, 252);
+                else setPix(out, x, y, 232, 238, 248);
             }
         }
         return;
@@ -520,13 +627,14 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 17) { // Water - Translucent aquatic pool with animated caustics pattern
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float wn = pixelHash(x, y, 17);
                 float caustic = std::sin(x * 0.8f + y * 0.4f) * std::cos(y * 0.8f - x * 0.3f);
-                if (caustic > 0.45f || wn > 0.65f) {
+                float wn = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 17);
+                float val = caustic * 0.7f + wn * 0.3f;
+                if (val > 0.35f) {
                     setPix(out, x, y, 120, 215, 255, 205);
-                } else if (caustic > 0.05f || wn > 0.15f) {
+                } else if (val > 0.05f) {
                     setPix(out, x, y, 48, 140, 235, 195);
-                } else if (caustic > -0.40f || wn > -0.45f) {
+                } else if (val > -0.35f) {
                     setPix(out, x, y, 28, 100, 215, 190);
                 } else {
                     setPix(out, x, y, 16, 70, 185, 185);
@@ -560,8 +668,8 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
                 bool isMouth = (y == 7 && x >= 5 && x <= 10);
                 if (isEye || isMouth) setPix(out, x, y, 42, 28, 20);
                 else {
-                    float n = pixelHash(x, y, 22);
-                    setPix(out, x, y, clampU8(78 + n * 12), clampU8(56 + n * 10), clampU8(42 + n * 8));
+                    float n = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 22);
+                    setPix(out, x, y, clampU8(78 + n * 10), clampU8(56 + n * 8), clampU8(42 + n * 6));
                 }
             }
         }
@@ -570,11 +678,11 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 23) { // Netherrack - Crimson bloody porous rock
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float nn = pixelHash(x, y, 23);
-                if (nn > 0.60f) setPix(out, x, y, 155, 45, 45);
-                else if (nn > 0.15f) setPix(out, x, y, 125, 30, 30);
-                else if (nn > -0.35f) setPix(out, x, y, 98, 20, 20);
-                else if (nn > -0.75f) setPix(out, x, y, 70, 14, 14);
+                float nn = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 23);
+                if (nn > 0.40f) setPix(out, x, y, 155, 45, 45);
+                else if (nn > 0.05f) setPix(out, x, y, 125, 30, 30);
+                else if (nn > -0.30f) setPix(out, x, y, 98, 20, 20);
+                else if (nn > -0.65f) setPix(out, x, y, 70, 14, 14);
                 else setPix(out, x, y, 45, 8, 8);
             }
         }
@@ -583,10 +691,10 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 24) { // End Stone - Pale inverted yellow porous moon rock
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float en = pixelHash(x, y, 24);
-                if (en > 0.5f) setPix(out, x, y, 238, 240, 185);
-                else if (en > 0.0f) setPix(out, x, y, 220, 224, 168);
-                else if (en > -0.5f) setPix(out, x, y, 198, 202, 148);
+                float en = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 24);
+                if (en > 0.35f) setPix(out, x, y, 238, 240, 185);
+                else if (en > -0.05f) setPix(out, x, y, 220, 224, 168);
+                else if (en > -0.45f) setPix(out, x, y, 198, 202, 148);
                 else setPix(out, x, y, 172, 176, 126);
             }
         }
@@ -595,13 +703,14 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 32) { // Molten Lava - Radiant swirling magma with dark cooling crust and white-hot veins
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float ln = pixelHash(x, y, 32);
                 float swirl = std::sin(x * 0.6f + y * 0.7f) + std::cos(y * 0.5f - x * 0.4f);
-                if (swirl > 1.1f || ln > 0.70f) {
+                float ln = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 32);
+                float val = swirl * 0.6f + ln * 0.4f;
+                if (val > 0.85f) {
                     setPix(out, x, y, 255, 245, 180, 255); // White-hot thermal core
-                } else if (swirl > 0.45f || ln > 0.25f) {
+                } else if (val > 0.30f) {
                     setPix(out, x, y, 255, 140, 20, 255);  // Blazing orange lava
-                } else if (swirl > -0.35f || ln > -0.35f) {
+                } else if (val > -0.30f) {
                     setPix(out, x, y, 220, 50, 10, 255);   // Deep crimson magma
                 } else {
                     setPix(out, x, y, 110, 24, 12, 255);   // Cooling basalt crust
@@ -622,12 +731,13 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
                 int lvl = mcCobbleMatrix[y][x];
-                float n = pixelHash(x, y, 37) * 8.0f;
-                if (lvl == 0) setPix(out, x, y, clampU8(50 + n), clampU8(50 + n), clampU8(50 + n));      // Dark mortar
-                else if (lvl == 1) setPix(out, x, y, clampU8(74 + n), clampU8(74 + n), clampU8(74 + n)); // Stone edge
-                else if (lvl == 2) setPix(out, x, y, clampU8(102 + n), clampU8(102 + n), clampU8(102 + n));// Mid stone
-                else if (lvl == 3) setPix(out, x, y, clampU8(128 + n), clampU8(128 + n), clampU8(128 + n));// Light stone
-                else setPix(out, x, y, clampU8(155 + n), clampU8(155 + n), clampU8(155 + n));              // Highlight
+                float smooth = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 37);
+                float n = smooth * 6.0f;
+                if (lvl == 0) setPix(out, x, y, clampU8(52 + n), clampU8(52 + n), clampU8(54 + n));      // Dark mortar
+                else if (lvl == 1) setPix(out, x, y, clampU8(76 + n), clampU8(76 + n), clampU8(78 + n)); // Stone edge
+                else if (lvl == 2) setPix(out, x, y, clampU8(104 + n), clampU8(104 + n), clampU8(106 + n));// Mid stone
+                else if (lvl == 3) setPix(out, x, y, clampU8(128 + n), clampU8(128 + n), clampU8(130 + n));// Light stone
+                else setPix(out, x, y, clampU8(154 + n), clampU8(154 + n), clampU8(156 + n));              // Highlight
             }
         }
         return;
@@ -636,17 +746,19 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
                 int lvl = mcCobbleMatrix[y][x];
-                float n = pixelHash(x, y, 38) * 8.0f;
-                bool isMoss = ((x * 7 + y * 13) % 11 <= 4) && (lvl <= 2);
+                float smooth = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 38);
+                float mossN = smoothNoiseWrap(x * 0.3f, y * 0.3f, 16.0f, 88);
+                bool isMoss = (mossN > 0.05f) && (lvl <= 2);
+                float n = smooth * 6.0f;
                 if (isMoss) {
-                    if ((x + y) % 2 == 0) setPix(out, x, y, 88, 148, 52);
-                    else setPix(out, x, y, 62, 112, 38);
+                    if (mossN > 0.35f) setPix(out, x, y, 96, 158, 54);
+                    else setPix(out, x, y, 68, 120, 40);
                 } else {
-                    if (lvl == 0) setPix(out, x, y, clampU8(50 + n), clampU8(50 + n), clampU8(50 + n));
-                    else if (lvl == 1) setPix(out, x, y, clampU8(74 + n), clampU8(74 + n), clampU8(74 + n));
-                    else if (lvl == 2) setPix(out, x, y, clampU8(102 + n), clampU8(102 + n), clampU8(102 + n));
-                    else if (lvl == 3) setPix(out, x, y, clampU8(128 + n), clampU8(128 + n), clampU8(128 + n));
-                    else setPix(out, x, y, clampU8(155 + n), clampU8(155 + n), clampU8(155 + n));
+                    if (lvl == 0) setPix(out, x, y, clampU8(52 + n), clampU8(52 + n), clampU8(54 + n));
+                    else if (lvl == 1) setPix(out, x, y, clampU8(76 + n), clampU8(76 + n), clampU8(78 + n));
+                    else if (lvl == 2) setPix(out, x, y, clampU8(104 + n), clampU8(104 + n), clampU8(106 + n));
+                    else if (lvl == 3) setPix(out, x, y, clampU8(128 + n), clampU8(128 + n), clampU8(130 + n));
+                    else setPix(out, x, y, clampU8(154 + n), clampU8(154 + n), clampU8(156 + n));
                 }
             }
         }
@@ -655,11 +767,9 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 39 || bId == 40) { // Granite & Polished Granite
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float gn = pixelHash(x, y, 39);
-                bool isDark = (gn < -0.6f);
-                bool isLight = (gn > 0.55f);
-                if (isDark) setPix(out, x, y, 82, 56, 48);
-                else if (isLight) setPix(out, x, y, 195, 145, 130);
+                float gn = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 39);
+                if (gn < -0.35f) setPix(out, x, y, 92, 64, 54);
+                else if (gn > 0.30f) setPix(out, x, y, 195, 145, 130);
                 else setPix(out, x, y, 160, 112, 100);
             }
         }
@@ -668,11 +778,11 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 41 || bId == 42) { // Diorite & Polished Diorite
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float dn = pixelHash(x, y, 41);
-                if (dn > 0.5f) setPix(out, x, y, 220, 220, 222);
-                else if (dn > 0.0f) setPix(out, x, y, 185, 185, 190);
-                else if (dn > -0.5f) setPix(out, x, y, 145, 145, 150);
-                else setPix(out, x, y, 110, 110, 115);
+                float dn = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 41);
+                if (dn > 0.35f) setPix(out, x, y, 225, 225, 228);
+                else if (dn > 0.0f) setPix(out, x, y, 190, 190, 195);
+                else if (dn > -0.35f) setPix(out, x, y, 150, 150, 155);
+                else setPix(out, x, y, 115, 115, 120);
             }
         }
         return;
@@ -680,8 +790,8 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 43 || bId == 44) { // Andesite & Polished Andesite
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float an = pixelHash(x, y, 43);
-                uint8_t g = clampU8(125.0f + an * 25.0f);
+                float an = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 43);
+                uint8_t g = clampU8(125.0f + an * 18.0f);
                 setPix(out, x, y, g, g + 2, g);
             }
         }
@@ -694,11 +804,11 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 47) { // Tuff - Volcanic ash rock with dark olivine inclusions
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float tn = pixelHash(x, y, 47);
+                float tn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 47);
                 bool isSpeckle = (x * 7 + y * 13) % 9 == 0;
                 if (isSpeckle) setPix(out, x, y, 70, 72, 65);
-                else if (tn > 0.4f) setPix(out, x, y, 120, 125, 115);
-                else if (tn > -0.2f) setPix(out, x, y, 102, 106, 98);
+                else if (tn > 0.25f) setPix(out, x, y, 120, 125, 115);
+                else if (tn > -0.15f) setPix(out, x, y, 102, 106, 98);
                 else setPix(out, x, y, 84, 88, 80);
             }
         }
@@ -707,11 +817,11 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 48) { // Calcite - Creamy white crystalline limestone
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float cn = pixelHash(x, y, 48);
+                float cn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 48);
                 bool isVein = (x - y == 3 || x - y == -4);
                 if (isVein) setPix(out, x, y, 205, 202, 192);
-                else if (cn > 0.3f) setPix(out, x, y, 242, 240, 232);
-                else if (cn > -0.3f) setPix(out, x, y, 228, 226, 218);
+                else if (cn > 0.2f) setPix(out, x, y, 242, 240, 232);
+                else if (cn > -0.2f) setPix(out, x, y, 228, 226, 218);
                 else setPix(out, x, y, 212, 210, 202);
             }
         }
@@ -720,7 +830,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 49) { // Dripstone - Earthy brown stalactite stone with vertical drip flutes
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float dn = pixelHash(x, y, 49) * 8.0f;
+                float dn = smoothNoiseWrap(x * 0.3f, y * 0.2f, 16.0f, 49) * 6.0f;
                 bool isGroove = (x == 2 || x == 7 || x == 12);
                 if (isGroove) setPix(out, x, y, clampU8(105 + dn), clampU8(78 + dn * 0.7f), clampU8(62 + dn * 0.5f));
                 else setPix(out, x, y, clampU8(142 + dn), clampU8(112 + dn * 0.8f), clampU8(92 + dn * 0.6f));
@@ -732,7 +842,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
                 bool isColumn = (x == 3 || x == 7 || x == 11 || x == 15);
-                float bn = pixelHash(x, y, 50) * 8.0f;
+                float bn = smoothNoiseWrap(x * 0.4f, y * 0.2f, 16.0f, 50) * 6.0f;
                 if (isColumn) setPix(out, x, y, clampU8(45 + bn), clampU8(45 + bn), clampU8(48 + bn));
                 else setPix(out, x, y, clampU8(78 + bn), clampU8(78 + bn), clampU8(84 + bn));
             }
@@ -742,7 +852,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 51) { // Smooth Basalt - Polished dark stone
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float bn = pixelHash(x, y, 51) * 6.0f;
+                float bn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 51) * 5.0f;
                 setPix(out, x, y, clampU8(62 + bn), clampU8(62 + bn), clampU8(66 + bn));
             }
         }
@@ -751,16 +861,16 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 52 || bId == 53) { // Obsidian & Cryo-Obsidian - Fractured volcanic glass
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float on = pixelHash(x, y, 52);
+                float on = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 52);
                 bool isGlint = (x == y || x + y == 15 || (x * 3 + y * 7) % 13 == 0);
                 if (bId == 53) { // Cryo-Obsidian (Cyan frost)
-                    if (isGlint && on > 0.1f) setPix(out, x, y, 70, 185, 245);
-                    else if (on > 0.0f) setPix(out, x, y, 25, 75, 120);
+                    if (isGlint && on > 0.05f) setPix(out, x, y, 70, 185, 245);
+                    else if (on > -0.1f) setPix(out, x, y, 25, 75, 120);
                     else setPix(out, x, y, 12, 28, 55);
                 } else { // Obsidian (Violet)
-                    if (isGlint && on > 0.2f) setPix(out, x, y, 92, 45, 140);
-                    else if (on > 0.1f) setPix(out, x, y, 48, 25, 75);
-                    else if (on > -0.4f) setPix(out, x, y, 25, 16, 38);
+                    if (isGlint && on > 0.1f) setPix(out, x, y, 92, 45, 140);
+                    else if (on > 0.0f) setPix(out, x, y, 48, 25, 75);
+                    else if (on > -0.3f) setPix(out, x, y, 25, 16, 38);
                     else setPix(out, x, y, 16, 12, 24);
                 }
             }
@@ -771,7 +881,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             bool isSeam = (y == 3 || y == 11 || y == 15);
             for (int x = 0; x < 16; ++x) {
-                float n = pixelHash(x, y, 54) * 8.0f;
+                float n = smoothNoiseWrap(x * 0.35f, y * 0.2f, 16.0f, 54) * 6.0f;
                 if (isSeam) setPix(out, x, y, clampU8(185 + n), clampU8(172 + n), clampU8(125 + n));
                 else setPix(out, x, y, clampU8(218 + n), clampU8(205 + n), clampU8(155 + n));
             }
@@ -794,7 +904,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             bool isSeam = (y == 3 || y == 11 || y == 15);
             for (int x = 0; x < 16; ++x) {
-                float n = pixelHash(x, y, 56) * 8.0f;
+                float n = smoothNoiseWrap(x * 0.35f, y * 0.2f, 16.0f, 56) * 6.0f;
                 if (isSeam) setPix(out, x, y, clampU8(165 + n), clampU8(75 + n * 0.5f), clampU8(32 + n * 0.3f));
                 else setPix(out, x, y, clampU8(198 + n), clampU8(98 + n * 0.5f), clampU8(45 + n * 0.3f));
             }
@@ -804,10 +914,10 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     else if (bId == 57) { // Marble - White stone with delicate gray veins
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float mn = pixelHash(x, y, 57);
+                float mn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 57);
                 bool isVein = (x + y * 2 == 14 || x - y == 5);
                 if (isVein) setPix(out, x, y, 195, 195, 202);
-                else if (mn > 0.3f) setPix(out, x, y, 248, 248, 252);
+                else if (mn > 0.2f) setPix(out, x, y, 248, 248, 252);
                 else setPix(out, x, y, 235, 235, 240);
             }
         }
@@ -817,7 +927,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         for (int y = 0; y < 16; ++y) {
             bool isBand = (y % 3 == 0);
             for (int x = 0; x < 16; ++x) {
-                float sn = pixelHash(x, y, 58) * 8.0f;
+                float sn = smoothNoiseWrap(x * 0.35f, y * 0.2f, 16.0f, 58) * 6.0f;
                 if (isBand) setPix(out, x, y, clampU8(75 + sn), clampU8(80 + sn), clampU8(92 + sn));
                 else setPix(out, x, y, clampU8(95 + sn), clampU8(100 + sn), clampU8(114 + sn));
             }
@@ -832,12 +942,12 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
                     if (isMortar) setPix(out, x, y, 45, 95, 88);
                     else setPix(out, x, y, 102, 178, 165);
                 } else if (bId == 68) { // Dark Prismarine
-                    float dn = pixelHash(x, y, 68) * 10.0f;
+                    float dn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 68) * 8.0f;
                     setPix(out, x, y, clampU8(48 + dn), clampU8(88 + dn), clampU8(82 + dn));
                 } else { // Prismarine
-                    float pn = pixelHash(x, y, 67);
-                    if (pn > 0.4f) setPix(out, x, y, 125, 195, 175);
-                    else if (pn > -0.2f) setPix(out, x, y, 92, 165, 150);
+                    float pn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 67);
+                    if (pn > 0.3f) setPix(out, x, y, 125, 195, 175);
+                    else if (pn > -0.15f) setPix(out, x, y, 92, 165, 150);
                     else setPix(out, x, y, 68, 135, 125);
                 }
             }
@@ -884,7 +994,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         if (typeIdx == 0) {
             for (int y = 0; y < 16; ++y) {
                 for (int x = 0; x < 16; ++x) {
-                    float n = pixelHash(x, y, bId) * 10.0f;
+                    float n = smoothNoiseWrap(x * 0.4f, y * 0.2f, 16.0f, bId) * 8.0f;
                     bool isGroove = (x == 1 || x == 5 || x == 9 || x == 13 || (x == 2 && y % 3 == 0));
 
                     switch (speciesIdx) {
@@ -1011,7 +1121,7 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
                     if (isHole) {
                         setPix(out, x, y, 0, 0, 0, 0); // Transparent cutout hole!
                     } else {
-                        float ln = pixelHash(x, y, bId);
+                        float ln = smoothNoiseWrap(x * 0.45f, y * 0.45f, 16.0f, bId);
                         float shade = (ln > 0.4f) ? 1.25f : ((ln > -0.2f) ? 1.0f : ((ln > -0.6f) ? 0.78f : 0.58f));
 
                         // Special color variation for Autumn Maple (blend red, orange, gold)
@@ -1362,13 +1472,16 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         return;
     }
 
-    // Standard Fallback for other block numbers
+    // Standard Fallback for other block numbers - Smooth multi-octave tonal variation with soft edge bevel
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
-            float noise = pixelHash(x, y, bId) * 0.18f;
-            float r = baseR * (0.92f + noise);
-            float g = baseG * (0.92f + noise);
-            float b = baseB * (0.92f + noise);
+            float smooth = fbmWrap(x * 0.25f, y * 0.25f, bId, 2);
+            float grit = pixelHash(x, y, bId) * 0.05f;
+            float noise = smooth * 0.12f + grit;
+            float ao = edgeAO(x, y, 0.04f);
+            float r = baseR * (1.0f + noise) * ao;
+            float g = baseG * (1.0f + noise) * ao;
+            float b = baseB * (1.0f + noise) * ao;
             setPix(out, x, y, clampU8(r), clampU8(g), clampU8(b), 255);
         }
     }
@@ -1381,12 +1494,14 @@ void TextureAtlas::generateMultiFaceTexture(int mf, uint8_t* out) {
     if (mf == TEX_LAYER_GRASS_TOP) { // Grass Top - Lush scattered green lawn
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float gn = pixelHash(x, y, 405);
-                if (gn > 0.55f) setPix(out, x, y, 134, 192, 67);       // Lime highlight
-                else if (gn > 0.10f) setPix(out, x, y, 113, 170, 60);  // Lush green
-                else if (gn > -0.35f) setPix(out, x, y, 89, 142, 47);  // Mid green
-                else if (gn > -0.75f) setPix(out, x, y, 68, 115, 36);  // Forest green
-                else setPix(out, x, y, 48, 85, 26);                    // Deep shadow
+                float gn = fbmWrap(x * 0.25f, y * 0.25f, 405, 2);
+                float grit = pixelHash(x, y, 405) * 0.08f;
+                float val = gn * 0.92f + grit;
+                if (val > 0.40f) setPix(out, x, y, 138, 198, 68);       // Lime highlight
+                else if (val > 0.10f) setPix(out, x, y, 114, 172, 58);  // Lush green
+                else if (val > -0.25f) setPix(out, x, y, 90, 144, 46);  // Mid green
+                else if (val > -0.60f) setPix(out, x, y, 70, 118, 36);  // Forest green
+                else setPix(out, x, y, 52, 88, 28);                     // Deep shadow
             }
         }
     }
@@ -1410,7 +1525,7 @@ void TextureAtlas::generateMultiFaceTexture(int mf, uint8_t* out) {
                 } else {
                     // Concentric growth ring lines (dist approx 2.0, 4.2, 5.8)
                     bool isRing = (std::abs(dist - 2.0f) < 0.45f || std::abs(dist - 4.2f) < 0.45f);
-                    float wn = pixelHash(x, y, mf) * 8.0f;
+                    float wn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, mf) * 6.0f;
                     if (isRing) {
                         setPix(out, x, y, clampU8(rHeart * 0.72f + wn), clampU8(gHeart * 0.72f + wn), clampU8(bHeart * 0.72f + wn));
                     } else {
@@ -1505,7 +1620,7 @@ void TextureAtlas::generateMultiFaceTexture(int mf, uint8_t* out) {
                     setPix(out, x, y, 45, 68, 25);
                 } else {
                     bool isRing = (std::abs(dist - 2.0f) < 0.45f || std::abs(dist - 4.2f) < 0.45f);
-                    float wn = pixelHash(x, y, mf) * 8.0f;
+                    float wn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, mf) * 6.0f;
                     if (isRing) {
                         setPix(out, x, y, clampU8(rHeart * 0.72f + wn), clampU8(gHeart * 0.72f + wn), clampU8(bHeart * 0.72f + wn));
                     } else {
@@ -1518,7 +1633,7 @@ void TextureAtlas::generateMultiFaceTexture(int mf, uint8_t* out) {
     else if (mf == TEX_LAYER_SANDSTONE_TOP) { // Sandstone Top - Smooth sand stone face
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float n = pixelHash(x, y, 420) * 8.0f;
+                float n = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 420) * 6.0f;
                 setPix(out, x, y, clampU8(224 + n), clampU8(212 + n), clampU8(162 + n));
             }
         }

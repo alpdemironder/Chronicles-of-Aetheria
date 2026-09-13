@@ -18,12 +18,24 @@ uniform vec3 uCamPos;
 layout(location = 0) out vec4 finalColor;
 layout(location = 1) out vec4 finalNormal;
 
+// Analytic sub-texel anti-aliasing for 16x16 pixel-art textures:
+// Preserves crisp pixel art up-close while smoothing texel boundaries over 1 screen pixel!
+vec2 smoothTexelCoord(vec2 uv, vec2 res) {
+    vec2 pixel = uv * res;
+    vec2 seam = floor(pixel + 0.5);
+    vec2 duv = max(fwidth(pixel), vec2(0.0001));
+    return (seam + clamp((pixel - seam) / duv, -0.5, 0.5)) / res;
+}
+
 void main() {
-    // 1. Sample Texture from Texture Array with edge clamp
+    // 1. Sample Texture from Texture Array with anti-aliased sub-texel filtering & anisotropic mipmapping
     vec4 texCol = vec4(1.0);
     if (fragTexIndex > 0.0) {
         vec2 clampedUV = clamp(fragUV, 0.0005, 0.9995);
-        texCol = texture(uTextureArray, vec3(clampedUV, fragTexIndex));
+        vec2 dUVdx = dFdx(clampedUV);
+        vec2 dUVdy = dFdy(clampedUV);
+        vec2 filteredUV = clamp(smoothTexelCoord(clampedUV, vec2(16.0)), 0.0005, 0.9995);
+        texCol = textureGrad(uTextureArray, vec3(filteredUV, fragTexIndex), dUVdx, dUVdy);
     }
 
     // Cutout alpha test (foliage cutouts, sapling transparent backgrounds)

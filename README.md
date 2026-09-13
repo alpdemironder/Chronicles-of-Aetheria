@@ -78,6 +78,11 @@ An advanced **C++17 OpenGL 3.3 Core Profile Voxel RPG Sandbox** that blends the 
 - **Solar & Lunar Celestial Arcs**: Smooth orbital sun/moon movement with dynamic atmospheric fog and horizon transitions.
 - **Iris Shaders Engine**: Dual G-Buffer deferred pipeline with volumetric fog, screen-space tonemapping, and in-game shader switcher menu (`[O]`).
 
+### 6. 🎨 Remastered Textures & Smooth Anti-Aliasing Engine
+- **Modern Minecraft (Jappa) Texture Remaster**: Replaced harsh high-frequency salt-and-pepper noise with smooth multi-octave Hermite cubic noise (`smoothNoiseWrap`), soft edge ambient occlusion / beveling (`edgeAO`), and rich harmonious color ramps across all 365+ blocks, items, structures, and ores.
+- **Hardware Mipmapping & 16x Anisotropic Filtering**: Generates full trilinear mipmap chains on `GL_TEXTURE_2D_ARRAY` (`GL_LINEAR_MIPMAP_LINEAR`) with up to 16x anisotropic filtering, completely eliminating distant pixel swimming, moiré patterns, and oblique-angle blur.
+- **Analytic Sub-Texel Anti-Aliasing (`gl_voxel.frag`)**: Custom GPU shader algorithm computes continuous screen-space UV derivatives (`fwidth`, `textureGrad`) to keep voxel pixel art crisp and razor-sharp up close while anti-aliasing texel boundaries smoothly over 1 screen pixel.
+
 ---
 
 ## 🚀 Building & Running
