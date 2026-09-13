@@ -1,4 +1,5 @@
 #include "MainMenuUI.hpp"
+#include "../core/Settings.hpp"
 #include <cmath>
 
 namespace Aetheria {
@@ -53,8 +54,19 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
     ui->drawRect(0, 0, sw, 90.0f, {0.02f, 0.03f, 0.05f, 0.65f});
     ui->drawRect(0, sh - 70.0f, sw, 70.0f, {0.02f, 0.03f, 0.05f, 0.75f});
 
+    // Account Profile Quick Badge at Top-Right
+    std::string currentUsername = Settings::instance().account.username;
+    std::string profBtnText = "[ HESAP: " + currentUsername + " ]";
+    float profBtnW = std::max(200.0f, static_cast<float>(profBtnText.length() * 6.0f * 1.35f + 24.0f));
+    float profBtnX = sw - profBtnW - 24.0f;
+    float profBtnY = 24.0f;
+    float profBtnH = 34.0f;
+    if (drawButton(ui, profBtnX, profBtnY, profBtnW, profBtnH, profBtnText, false, mouseX, mouseY, mouseLeftClicked)) {
+        if (onOpenLogin) onOpenLogin();
+    }
+
     // 2. Title Logo & Branding
-    float titleY = sh * 0.18f;
+    float titleY = sh * 0.16f;
 
     // Subtle breathing pulse for title glow
     float pulse = 0.95f + 0.05f * std::sin(totalTime * 2.5f);
@@ -71,14 +83,14 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
 
     // 3. Central Menu Buttons Deck
     float btnW = 380.0f;
-    float btnH = 42.0f;
-    float btnGap = 10.0f;
+    float btnH = 38.0f;
+    float btnGap = 8.0f;
     float btnX = cx - btnW * 0.5f;
-    float startY = sh * 0.36f;
+    float startY = sh * 0.31f;
 
     // Background frosted chassis for buttons
-    float chassisPad = 16.0f;
-    float chassisH = 6 * btnH + 5 * btnGap + chassisPad * 2.0f;
+    float chassisPad = 14.0f;
+    float chassisH = 7 * btnH + 6 * btnGap + chassisPad * 2.0f;
     ui->drawRect(btnX - chassisPad, startY - chassisPad, btnW + chassisPad * 2.0f, chassisH, {0.05f, 0.07f, 0.10f, 0.70f});
     ui->drawRectOutline(btnX - chassisPad, startY - chassisPad, btnW + chassisPad * 2.0f, chassisH, 1.5f, {0.20f, 0.35f, 0.55f, 0.5f});
 
@@ -92,23 +104,28 @@ void MainMenuUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
         if (onOpenMultiplayer) onOpenMultiplayer();
     }
 
+    // Account & Profile Login Button
+    if (drawButton(ui, btnX, startY + 2 * (btnH + btnGap), btnW, btnH, "> HESAP GIRISI & PROFIL <", false, mouseX, mouseY, mouseLeftClicked)) {
+        if (onOpenLogin) onOpenLogin();
+    }
+
     // Update Calendar & Roadmap Button
-    if (drawButton(ui, btnX, startY + 2 * (btnH + btnGap), btnW, btnH, "UPDATE CALENDAR & ROADMAP", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 3 * (btnH + btnGap), btnW, btnH, "UPDATE CALENDAR & ROADMAP", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onOpenCalendar) onOpenCalendar();
     }
 
     // Iris Shaders Button
-    if (drawButton(ui, btnX, startY + 3 * (btnH + btnGap), btnW, btnH, "SHADER PACKS (IRIS)", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 4 * (btnH + btnGap), btnW, btnH, "SHADER PACKS (IRIS)", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onOpenShaders) onOpenShaders();
     }
 
     // Settings & Options Button
-    if (drawButton(ui, btnX, startY + 4 * (btnH + btnGap), btnW, btnH, "SETTINGS & OPTIONS", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 5 * (btnH + btnGap), btnW, btnH, "SETTINGS & OPTIONS", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onOpenSettings) onOpenSettings();
     }
 
     // Quit Button
-    if (drawButton(ui, btnX, startY + 5 * (btnH + btnGap), btnW, btnH, "QUIT TO DESKTOP", false, mouseX, mouseY, mouseLeftClicked)) {
+    if (drawButton(ui, btnX, startY + 6 * (btnH + btnGap), btnW, btnH, "QUIT TO DESKTOP", false, mouseX, mouseY, mouseLeftClicked)) {
         if (onQuit) onQuit();
     }
 

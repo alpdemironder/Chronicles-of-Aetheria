@@ -146,6 +146,22 @@ The executable will be built directly to `bin\AetheriaRPG.exe`.
 
 ---
 
+## 👤 Account Login & Character Profile (Hesap Girişi)
+
+Chronicles of Aetheria features a dedicated **Account Login & Profile Screen** (`> HESAP GIRISI & PROFIL <`):
+- **Custom Player Nickname**: Type and set your custom player name with full keyboard typing, backspace editing, and real-time cursor blinking.
+- **Random Name Generator (`RASTGELE`)**: Generates cool adventure and fantasy callsigs with 1 click.
+- **RPG Character Class Archetypes**:
+  - **Savaşçı (Warrior)**: +20 Max HP bonus, +5 Sword Melee Power.
+  - **Büyücü (Mage)**: +50 Max Mana bonus, Arcane Affinity.
+  - **Okçu (Ranger)**: +15% Sprint Speed bonus, Rapid Archery.
+  - **Paladin (Paladin)**: +10 Base Armor Defense, Holy Resilience.
+- **Quick Account Switching**: Saved profile chips to switch instantly between previous profiles.
+- **Remember Me (`Beni Hatırla`)**: Automatically stores and logs into your profile on launch.
+- **Full In-Game Synchronization**: Your chosen name appears in the HUD status deck, in-game chat messages, multiplayer nametags, and the main menu top badge (`[ HESAP: <Isim> ]`).
+
+---
+
 ## 🌐 Co-op Multiplayer & Worlds Hub (Çok Oyunculu)
 
 Chronicles of Aetheria features a full-featured tabbed **Multiplayer & Worlds Hub** (`> MULTIPLAYER (ÇOK OYUNCULU) <`):

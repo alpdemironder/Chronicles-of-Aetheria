@@ -47,6 +47,11 @@ public:
     float getAttackPower() const;
     float getDefense() const { return inventory.getTotalDefense(); }
 
+    const std::string& getName() const { return name; }
+    void setName(const std::string& n) { name = n; }
+    const std::string& getCharacterClass() const { return characterClass; }
+    void setCharacterClass(const std::string& cls) { characterClass = cls; }
+
     int getSelectedHotbarIndex() const { return selectedHotbarIndex; }
     void setSelectedHotbarIndex(int idx);
     void cycleHotbar(int delta);
@@ -74,6 +79,9 @@ private:
     uint32_t level = 1;
     uint32_t xp = 0;
     uint32_t xpToNextLevel = 100;
+
+    std::string name = "Alp";
+    std::string characterClass = "Savasci";
 
     float health = 100.0f;
     float maxHealth = 100.0f;

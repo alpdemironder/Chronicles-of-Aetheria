@@ -33,6 +33,11 @@ void Settings::resetDefaults() {
     gameplay.timeOfDay = 6000.0f;
     gameplay.daySpeed = 1.0f;
     gameplay.peacefulMode = false;
+
+    account.username = "Alp";
+    account.characterClass = "Savasci";
+    account.rememberMe = true;
+    account.isLoggedIn = false;
 }
 
 void Settings::load() {
@@ -57,6 +62,10 @@ void Settings::load() {
         else if (key == "autoStepUp") file >> controls.autoStepUp;
         else if (key == "stepHeight") file >> controls.stepHeight;
         else if (key == "thirdPerson") file >> gameplay.thirdPerson;
+        else if (key == "username") file >> account.username;
+        else if (key == "characterClass") file >> account.characterClass;
+        else if (key == "rememberMe") { int val = 1; file >> val; account.rememberMe = (val != 0); }
+        else if (key == "isLoggedIn") { int val = 0; file >> val; account.isLoggedIn = (val != 0); }
     }
 }
 
@@ -79,6 +88,10 @@ void Settings::save() {
     file << "autoStepUp " << controls.autoStepUp << "\n";
     file << "stepHeight " << controls.stepHeight << "\n";
     file << "thirdPerson " << gameplay.thirdPerson << "\n";
+    file << "username " << account.username << "\n";
+    file << "characterClass " << account.characterClass << "\n";
+    file << "rememberMe " << (account.rememberMe ? 1 : 0) << "\n";
+    file << "isLoggedIn " << (account.isLoggedIn ? 1 : 0) << "\n";
 }
 
 } // namespace Aetheria

@@ -47,6 +47,7 @@
 #include "ui/UpdateCalendarUI.hpp"
 #include "ui/MainMenuUI.hpp"
 #include "ui/MultiplayerUI.hpp"
+#include "ui/LoginUI.hpp"
 #include "ui/ChatUI.hpp"
 #include "network/NetworkProtocol.hpp"
 #include "network/Client.hpp"
@@ -113,6 +114,8 @@ int main(int argc, char* argv[]) {
     // 5. Player Setup on Ground Surface & Initial RPG Starter Kit
     int spawnGroundY = world->getHighestBlock(0, 0);
     Player player(Vec3(0.0f, static_cast<float>(spawnGroundY) + 1.8f, 0.0f));
+    player.setName(config.account.username);
+    player.setCharacterClass(config.account.characterClass);
     camera.setPosition(player.getPosition());
 
     // Populate initial starter kit so hotbar and inventory are immediately usable & visible
@@ -169,10 +172,22 @@ int main(int argc, char* argv[]) {
     Net::AetheriaServer localServer;
     auto netClient = std::make_unique<Net::NetworkClient>();
     MultiplayerUI multiplayerUI(netClient.get(), &localServer);
+    multiplayerUI.setPlayerName(config.account.username);
     ChatUI chatUI;
 
+    // Account & Profile Login Subsystem
+    LoginUI loginUI;
+    loginUI.setUsername(config.account.username);
+    loginUI.setCharacterClass(config.account.characterClass);
+    loginUI.setRememberMe(config.account.rememberMe);
+    if (!config.account.rememberMe || !config.account.isLoggedIn) {
+        loginUI.setOpen(true);
+    }
+
     window->setCharCallback([&](char c) {
-        if (multiplayerUI.isOpen()) {
+        if (loginUI.isOpen()) {
+            loginUI.onCharInput(c);
+        } else if (multiplayerUI.isOpen()) {
             multiplayerUI.onCharInput(c);
         } else if (chatUI.isOpen()) {
             chatUI.onCharInput(c);
@@ -180,7 +195,9 @@ int main(int argc, char* argv[]) {
     });
 
     window->setKeyCallback([&](int key) {
-        if (multiplayerUI.isOpen()) {
+        if (loginUI.isOpen()) {
+            loginUI.onKeyDown(key);
+        } else if (multiplayerUI.isOpen()) {
             multiplayerUI.onKeyDown(key);
         } else if (chatUI.isOpen()) {
             chatUI.onKeyDown(key);
@@ -191,7 +208,7 @@ int main(int argc, char* argv[]) {
         if (netClient->isConnected()) {
             netClient->sendChat(msg);
         } else {
-            chatUI.addMessage("Local", msg, {0.75f, 0.9f, 1.0f, 1.0f});
+            chatUI.addMessage(player.getName(), msg, {0.75f, 0.9f, 1.0f, 1.0f});
         }
     });
 
@@ -210,6 +227,20 @@ int main(int argc, char* argv[]) {
     });
     mainMenu.setOnOpenMultiplayer([&]() {
         multiplayerUI.setOpen(true);
+    });
+    mainMenu.setOnOpenLogin([&]() {
+        loginUI.setOpen(true);
+    });
+    loginUI.setOnLoginSuccess([&](const std::string& u, const std::string& cls) {
+        config.account.username = u;
+        config.account.characterClass = cls;
+        config.account.isLoggedIn = true;
+        config.account.rememberMe = loginUI.getRememberMe();
+        config.save();
+
+        player.setName(u);
+        player.setCharacterClass(cls);
+        multiplayerUI.setPlayerName(u);
     });
     multiplayerUI.setOnStartGame([&]() {
         gameState = GameState::Playing;
@@ -290,7 +321,9 @@ int main(int argc, char* argv[]) {
         // ----------------------------------------------------
         // ESC key: Priority close for any active menu, or open Settings if in gameplay
         if (window->isKeyPressed(VK_ESCAPE)) {
-            if (chatUI.isOpen()) {
+            if (loginUI.isOpen()) {
+                loginUI.setOpen(false);
+            } else if (chatUI.isOpen()) {
                 chatUI.setOpen(false);
             } else if (multiplayerUI.isOpen()) {
                 multiplayerUI.setOpen(false);
@@ -431,7 +464,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        bool anyMenuOpen = (gameState == GameState::MainMenu) || multiplayerUI.isOpen() || chatUI.isOpen() ||
+        bool anyMenuOpen = (gameState == GameState::MainMenu) || loginUI.isOpen() || multiplayerUI.isOpen() || chatUI.isOpen() ||
                            updateCalendar.getIsOpen() || irisShaderUI.isOpen() || settingsMenu.isOpen() ||
                            inventoryMenu.getIsOpen() || buildMenu.getIsOpen() ||
                            blockCatalog.getIsOpen() || bestiary.getIsOpen() || biomeCodex.getIsOpen();
@@ -1380,6 +1413,11 @@ int main(int argc, char* argv[]) {
         // Render Update Calendar & Development Roadmap Menu
         if (updateCalendar.getIsOpen()) {
             updateCalendar.render(window->getWidth(), window->getHeight(), mx, my, mDown, mClicked, totalTime);
+        }
+
+        // Render Account Login & Profile Modal on topmost UI layer
+        if (loginUI.isOpen()) {
+            loginUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), mx, my, mDown, mClicked, totalTime);
         }
 
         uiRenderer->end(glPipeline.get());

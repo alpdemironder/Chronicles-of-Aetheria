@@ -228,7 +228,7 @@ void HUD::render(int screenWidth, int screenHeight,
     // 3. CLEAN MODERN RPG STAT DECK (Bottom-Left)
     // =========================================================================
     float deckW = 280.0f;
-    float deckH = 88.0f;
+    float deckH = 104.0f;
     float deckX = 20.0f;
     float deckY = sh - deckH - 20.0f;
 
@@ -244,10 +244,14 @@ void HUD::render(int screenWidth, int screenHeight,
 
     float barX = deckX + 12.0f;
     float barW = 160.0f;
-    float barH = 11.0f;
+    float barH = 10.0f;
+
+    // Player Name & Class Header
+    std::string playerTitle = player.getName() + " [" + player.getCharacterClass() + "]";
+    ui->drawText(playerTitle, barX, deckY + 8.0f, 1.25f, {1.0f, 0.88f, 0.35f, 1.0f});
 
     // Health Bar
-    float hpY = deckY + 12.0f;
+    float hpY = deckY + 26.0f;
     ui->drawEdgyProgressBar(barX, hpY, barW, barH,
                             player.getHealth() / player.getMaxHealth(),
                             {0.95f, 0.18f, 0.25f, 1.0f}, {1.0f, 0.50f, 0.15f, 1.0f},

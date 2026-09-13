@@ -52,6 +52,7 @@ public:
     void setOnBackToMenu(std::function<void()> cb) { onBackToMenu = cb; }
 
     const std::string& getPlayerName() const { return playerName; }
+    void setPlayerName(const std::string& n) { playerName = n; }
     const std::string& getServerAddress() const { return serverAddress; }
 
     MultiplayerTab getActiveTab() const { return activeTab; }

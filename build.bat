@@ -10,7 +10,7 @@ set GXX=g++.exe
 
 if not exist bin mkdir bin
 
-echo Compiling C++ Source Files with Modern OpenGL...
+echo Compiling C++ Source Files with Modern OpenGL and Winsock2...
 set SRCS=src\main.cpp ^
 src\core\Window.cpp ^
 src\core\Audio.cpp ^
@@ -31,6 +31,7 @@ src\building\StructurePiece.cpp ^
 src\building\BuildingManager.cpp ^
 src\entities\Entity.cpp ^
 src\entities\Player.cpp ^
+src\entities\RemotePlayer.cpp ^
 src\entities\CreatureRegistry.cpp ^
 src\entities\Creature.cpp ^
 src\entities\CaptureSphere.cpp ^
@@ -40,6 +41,9 @@ src\inventory\ItemRegistry.cpp ^
 src\inventory\Inventory.cpp ^
 src\inventory\CraftingRegistry.cpp ^
 src\inventory\FurnaceManager.cpp ^
+src\network\NetworkSocket.cpp ^
+src\network\Server.cpp ^
+src\network\Client.cpp ^
 src\render\IrisShaderManager.cpp ^
 src\ui\UIRenderer.cpp ^
 src\ui\ItemIconRenderer.cpp ^
@@ -52,16 +56,31 @@ src\ui\BiomeCodexUI.cpp ^
 src\ui\SettingsUI.cpp ^
 src\ui\IrisShaderUI.cpp ^
 src\ui\UpdateCalendarUI.cpp ^
-src\ui\MainMenuUI.cpp
+src\ui\MainMenuUI.cpp ^
+src\ui\MultiplayerUI.cpp ^
+src\ui\LoginUI.cpp ^
+src\ui\ChatUI.cpp
 
-"%GXX%" -std=c++17 -O2 -I src %SRCS% -o bin\AetheriaRPG.exe -lopengl32 -lgdi32 -luser32 -lwinmm -lshell32
+"%GXX%" -std=c++17 -O2 -I src %SRCS% -o bin\AetheriaRPG.exe -lopengl32 -lgdi32 -luser32 -lwinmm -lshell32 -lws2_32
+
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Game Client compilation failed!
+    exit /b %ERRORLEVEL%
+)
+
+echo.
+echo Compiling Chronicles of Aetheria Dedicated Server (Headless Console)...
+set SERVER_SRCS=src\server_main.cpp src\network\NetworkSocket.cpp src\network\Server.cpp
+"%GXX%" -std=c++17 -O2 -I src %SERVER_SRCS% -o bin\AetheriaServer.exe -lws2_32
 
 if %ERRORLEVEL% equ 0 (
     echo ========================================================
-    echo   BUILD SUCCESSFUL! Output: bin\AetheriaRPG.exe
+    echo   BUILD SUCCESSFUL!
+    echo   Client: bin\AetheriaRPG.exe
+    echo   Server: bin\AetheriaServer.exe
     echo ========================================================
 ) else (
     echo ========================================================
-    echo   BUILD FAILED with error code %ERRORLEVEL%
+    echo   DEDICATED SERVER BUILD FAILED with error code %ERRORLEVEL%
     echo ========================================================
 )

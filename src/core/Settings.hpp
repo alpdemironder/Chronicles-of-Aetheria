@@ -35,6 +35,13 @@ struct GameplaySettings {
     bool peacefulMode = false;
 };
 
+struct AccountSettings {
+    std::string username = "Alp";
+    std::string characterClass = "Savasci";
+    bool rememberMe = true;
+    bool isLoggedIn = false;
+};
+
 class Settings {
 public:
     static Settings& instance();
@@ -43,6 +50,7 @@ public:
     AudioSettings audio;
     ControlsSettings controls;
     GameplaySettings gameplay;
+    AccountSettings account;
 
     void resetDefaults();
     void load();
