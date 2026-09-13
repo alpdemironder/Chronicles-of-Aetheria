@@ -21,9 +21,7 @@ Creature::Creature(CreatureType type, const Vec3& pos)
 }
 
 bool Creature::isFlyingType() const {
-    return (type == CreatureType::Pixie ||
-            type == CreatureType::VoidPhantom ||
-            type == CreatureType::Harpy);
+    return false;
 }
 
 void Creature::setTamed(bool tamed) {
@@ -584,32 +582,24 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
     // Select texture layer
     float tIdx = 390.0f; // Fur default
     switch (type) {
+    case CreatureType::Cow:
     case CreatureType::Sheep:
-    case CreatureType::Boar:
-    case CreatureType::Stag:
-    case CreatureType::Wolf:
-    case CreatureType::Camel:
-    case CreatureType::AlpineGoat:
-    case CreatureType::Harpy:
+    case CreatureType::Pig:
+    case CreatureType::Horse:
         tIdx = 390.0f; // Fur
         break;
-    case CreatureType::Goblin:
+    case CreatureType::Chicken:
+        tIdx = 398.0f; // Feather/Cloth
+        break;
     case CreatureType::Zombie:
+    case CreatureType::Ghoul:
+        tIdx = 398.0f; // Undead Rag / Flesh
+        break;
+    case CreatureType::Goblin:
+        tIdx = 391.0f; // Hide / Scales
+        break;
     case CreatureType::Spider:
-    case CreatureType::Scorpion:
-    case CreatureType::Tortoise:
-    case CreatureType::SwampHag:
-        tIdx = 391.0f; // Scales / hide
-        break;
-    case CreatureType::TitanGolem:
-    case CreatureType::IceGolem:
-    case CreatureType::MagmaDrake:
-    case CreatureType::VoidHarbinger:
-        tIdx = 392.0f; // Boss rune obsidian
-        break;
-    case CreatureType::Pixie:
-    case CreatureType::VoidPhantom:
-        tIdx = 393.0f; // Fae luminescent crystal
+        tIdx = 391.0f; // Chitin
         break;
     case CreatureType::Skeleton:
         tIdx = 394.0f; // Bone
@@ -623,56 +613,109 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
     float attackLunge = (state == AIState::Attack) ? 15.0f : 0.0f;
 
     // =========================================================================
-    // 1. FLYERS (Pixie, VoidPhantom) - HYTALE STYLIZED FAE
+    // 1. SPIDER (Dedicated 8-Legged Arachnid)
     // =========================================================================
-    if (type == CreatureType::Pixie) {
-        float hoverY = std::sin(animTime * 4.0f) * 0.15f + 0.5f;
-        Vec3 bodyPos = {0, hoverY, 0};
+    if (type == CreatureType::Spider) {
+        float bodyH = def.size.y * 0.50f;
+        float bodyW = def.size.x * 0.48f;
+        float bodyD = def.size.z * 0.42f;
 
-        // Chibi fairy torso
-        appendOrientedBox(verts, position, mobYaw, bodyPos, {0.30f, 0.38f, 0.28f}, col * 1.1f, 398.0f, attackLunge, deathRoll);
+        // Cephalothorax (Front head & thorax)
+        Vec3 cephPos = {0, bodyH * 0.75f, bodyD * 0.35f};
+        appendOrientedBox(verts, position, mobYaw, cephPos, {bodyW * 0.85f, bodyH * 0.85f, bodyD * 0.85f}, col * 1.15f, 391.0f, attackLunge, deathRoll);
 
-        // Chibi head with expressive eyes
-        Vec3 headPos = bodyPos + Vec3(0, 0.32f, 0.06f);
-        appendOrientedBox(verts, position, mobYaw, headPos, {0.32f, 0.32f, 0.32f}, {1.15f, 1.15f, 1.05f, col.w}, tIdx, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0, 0.16f + 0.01f), {0.28f, 0.28f, 0.02f}, {1, 1, 1, col.w}, 395.0f, attackLunge, deathRoll);
+        // Bulbous Abdomen (Rear abdomen, elevated slightly)
+        Vec3 abdoPos = {0, bodyH * 1.05f, -bodyD * 0.55f};
+        appendOrientedBox(verts, position, mobYaw, abdoPos, {bodyW * 1.25f, bodyH * 1.35f, bodyD * 1.45f}, col * 0.85f, 391.0f, attackLunge * 0.5f, deathRoll);
 
-        // Flower/Leaf Sprout Hair on head
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0.18f, 0), {0.16f, 0.14f, 0.16f}, {0.3f, 0.9f, 0.4f, col.w}, 390.0f, 15.0f, deathRoll);
+        // 6 Glowing Ruby Red Arachnid Eyes on face
+        Vec4 eyeRed = {2.2f, 0.2f, 0.2f, col.w};
+        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3(-0.12f, 0.06f, bodyD * 0.43f + 0.01f), {0.06f, 0.06f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3( 0.12f, 0.06f, bodyD * 0.43f + 0.01f), {0.06f, 0.06f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3(-0.24f, 0.02f, bodyD * 0.40f + 0.01f), {0.05f, 0.05f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3( 0.24f, 0.02f, bodyD * 0.40f + 0.01f), {0.05f, 0.05f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3(-0.06f, -0.06f, bodyD * 0.43f + 0.01f), {0.04f, 0.04f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, cephPos + Vec3( 0.06f, -0.06f, bodyD * 0.43f + 0.01f), {0.04f, 0.04f, 0.02f}, eyeRed, 396.0f, attackLunge, deathRoll);
 
-        // Fluttering Translucent Fae Wings
-        float wingFlap = std::sin(animTime * 35.0f) * 45.0f;
-        Vec4 wingCol = {0.6f, 0.9f, 1.0f, col.w * 0.85f};
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(-0.25f, 0.15f, -0.1f), {0.45f, 0.04f, 0.32f}, wingCol, 393.0f, 0, wingFlap + deathRoll);
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3( 0.25f, 0.15f, -0.1f), {0.45f, 0.04f, 0.32f}, wingCol, 393.0f, 0, -wingFlap + deathRoll);
+        // Venomous Fangs / Pedipalps curving downward
+        appendOrientedSpike(verts, position, mobYaw, cephPos + Vec3(-0.09f, -bodyH * 0.35f, bodyD * 0.42f), {0.04f, 0.04f, 0.04f}, -0.15f, {0.15f, 0.15f, 0.15f, col.w}, 394.0f, -20.0f, deathRoll);
+        appendOrientedSpike(verts, position, mobYaw, cephPos + Vec3( 0.09f, -bodyH * 0.35f, bodyD * 0.42f), {0.04f, 0.04f, 0.04f}, -0.15f, {0.15f, 0.15f, 0.15f, col.w}, 394.0f, -20.0f, deathRoll);
+
+        // 8 Splayed Crawling Legs (4 pairs)
+        float legThick = 0.06f;
+        float legLen = 0.65f;
+        float legAngles[4] = {35.0f, 65.0f, 115.0f, 145.0f};
+
+        for (int i = 0; i < 4; ++i) {
+            float phase = animTime * 12.0f + static_cast<float>(i) * 1.57f;
+            float stepLift = std::sin(phase) * 18.0f;
+
+            // Left leg
+            float angL = legAngles[i];
+            float radL = angL * DEG2RAD;
+            Vec3 legBaseL = cephPos + Vec3(-bodyW * 0.45f, 0, (1.5f - static_cast<float>(i)) * 0.18f);
+            appendOrientedBox(verts, position, mobYaw, legBaseL + Vec3(-std::cos(radL) * legLen * 0.5f, 0.10f, std::sin(radL) * legLen * 0.5f),
+                              {legThick, legThick, legLen}, col * 0.75f, 391.0f, stepLift, -angL + deathRoll);
+
+            // Right leg
+            float angR = -legAngles[i];
+            float radR = angR * DEG2RAD;
+            Vec3 legBaseR = cephPos + Vec3(bodyW * 0.45f, 0, (1.5f - static_cast<float>(i)) * 0.18f);
+            appendOrientedBox(verts, position, mobYaw, legBaseR + Vec3(-std::cos(radR) * legLen * 0.5f, 0.10f, std::sin(radR) * legLen * 0.5f),
+                              {legThick, legThick, legLen}, col * 0.75f, 391.0f, -stepLift, -angR + deathRoll);
+        }
         return;
     }
-    if (type == CreatureType::VoidPhantom) {
-        float hoverY = std::sin(animTime * 3.0f) * 0.2f + 0.6f;
-        Vec3 bodyPos = {0, hoverY, 0};
 
-        // Shrouded robe torso
-        appendOrientedBox(verts, position, mobYaw, bodyPos, {0.55f, 0.85f, 0.45f}, col, 398.0f, attackLunge, deathRoll);
+    // =========================================================================
+    // 2. CHICKEN (Avian Farm Poultry)
+    // =========================================================================
+    if (type == CreatureType::Chicken) {
+        float legH = def.size.y * 0.40f;
+        float bodyH = def.size.y * 0.48f;
+        float bodyW = def.size.x * 0.65f;
+        float bodyD = def.size.z * 0.85f;
 
-        // Menacing hooded skull
-        Vec3 headPos = bodyPos + Vec3(0, 0.58f, 0.12f);
-        appendOrientedBox(verts, position, mobYaw, headPos, {0.44f, 0.44f, 0.44f}, {0.3f, 0.15f, 0.4f, col.w}, tIdx, attackLunge, deathRoll);
-        // Glowing void eye slit
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0, 0.22f + 0.01f), {0.38f, 0.18f, 0.02f}, {2.0f, 0.4f, 2.5f, col.w}, 396.0f, attackLunge, deathRoll);
+        // Slender Yellow Legs & Feet
+        Vec4 yellowLeg = {1.0f, 0.82f, 0.15f, col.w};
+        appendOrientedBox(verts, position, mobYaw, {-bodyW * 0.28f, legH * 0.5f, 0}, {0.05f, legH, 0.05f}, yellowLeg, 398.0f,  walkSwing, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, { bodyW * 0.28f, legH * 0.5f, 0}, {0.05f, legH, 0.05f}, yellowLeg, 398.0f, -walkSwing, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, {-bodyW * 0.28f, 0.02f, 0.04f}, {0.12f, 0.02f, 0.14f}, yellowLeg, 398.0f,  walkSwing, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, { bodyW * 0.28f, 0.02f, 0.04f}, {0.12f, 0.02f, 0.14f}, yellowLeg, 398.0f, -walkSwing, deathRoll);
 
-        // Ethereal trailing shroud ribbons
-        float ribbonSway = std::sin(animTime * 6.0f) * 20.0f;
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(-0.2f, -0.45f, 0), {0.14f, 0.55f, 0.14f}, col * 0.7f, tIdx, ribbonSway, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3( 0.2f, -0.45f, 0), {0.14f, 0.55f, 0.14f}, col * 0.7f, tIdx, -ribbonSway, deathRoll);
+        // Plump Feathered Body
+        Vec3 bodyPos = {0, legH + bodyH * 0.5f, 0};
+        appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW, bodyH, bodyD}, col, 398.0f, attackLunge, deathRoll);
+
+        // Flapping Wings
+        float wingFlap = std::sin(animTime * 16.0f) * 28.0f;
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(-bodyW * 0.52f, 0, 0), {0.04f, bodyH * 0.65f, bodyD * 0.72f}, col * 0.95f, 398.0f, 0, wingFlap + deathRoll);
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3( bodyW * 0.52f, 0, 0), {0.04f, bodyH * 0.65f, bodyD * 0.72f}, col * 0.95f, 398.0f, 0, -wingFlap + deathRoll);
+
+        // Tail Feathers
+        appendOrientedWedge(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.25f, -bodyD * 0.48f), {bodyW * 0.55f, bodyH * 0.50f, 0.18f}, col * 0.9f, 398.0f, -35.0f, deathRoll);
+
+        // Head & Neck
+        Vec3 headPos = {0, legH + bodyH * 0.90f, bodyD * 0.38f};
+        appendOrientedBox(verts, position, mobYaw, headPos, {0.24f, 0.30f, 0.26f}, col * 1.05f, 398.0f, attackLunge, deathRoll);
+
+        // Yellow Beak
+        appendOrientedWedge(verts, position, mobYaw, headPos + Vec3(0, -0.04f, 0.18f), {0.10f, 0.08f, 0.12f}, yellowLeg, 398.0f, 0, deathRoll);
+
+        // Red Comb on Crown
+        Vec4 redComb = {0.95f, 0.15f, 0.18f, col.w};
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0.20f, 0), {0.06f, 0.12f, 0.20f}, redComb, 398.0f, 0, deathRoll);
+
+        // Red Wattle under beak
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -0.14f, 0.12f), {0.05f, 0.10f, 0.08f}, redComb, 398.0f, 0, deathRoll);
         return;
     }
 
     // =========================================================================
-    // 2. BIPEDS (Goblin, Skeleton, Zombie, SwampHag, Harpy, IceGolem) - HYTALE RIG
+    // 3. BIPEDS (Zombie, Skeleton, Ghoul, Goblin)
     // =========================================================================
-    bool isBiped = (type == CreatureType::Goblin || type == CreatureType::Skeleton ||
-                    type == CreatureType::Zombie || type == CreatureType::SwampHag ||
-                    type == CreatureType::Harpy || type == CreatureType::IceGolem);
+    bool isBiped = (type == CreatureType::Zombie || type == CreatureType::Skeleton ||
+                    type == CreatureType::Ghoul  || type == CreatureType::Goblin);
 
     if (isBiped) {
         float legH = def.size.y * 0.46f;
@@ -681,120 +724,87 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
         float torsoW = def.size.x * 0.62f;
         float torsoD = def.size.z * 0.44f;
 
-        // Tapered Booted Legs
-        appendOrientedBox(verts, position, mobYaw, {-torsoW * 0.28f, legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, (type == CreatureType::Skeleton ? 394.0f : 398.0f), walkSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { torsoW * 0.28f, legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, (type == CreatureType::Skeleton ? 394.0f : 398.0f), -walkSwing, deathRoll);
+        // Legs with Walk Swing
+        float legTex = (type == CreatureType::Skeleton ? 394.0f : 398.0f);
+        appendOrientedBox(verts, position, mobYaw, {-torsoW * 0.28f, legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, legTex, walkSwing, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, { torsoW * 0.28f, legH * 0.5f, 0}, {legW, legH, legW}, col * 0.85f, legTex, -walkSwing, deathRoll);
 
-        // Torso with Leather Belt & Tunic
-        Vec3 torsoPos = {0, legH + torsoH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoD}, col, (type == CreatureType::Skeleton ? 394.0f : 398.0f), attackLunge, deathRoll);
-
-        // Armor Pauldrons on Shoulders with Aggressive Spikes
-        float pauldW = torsoW * 0.36f;
-        appendOrientedBox(verts, position, mobYaw, torsoPos + Vec3(-torsoW * 0.55f, torsoH * 0.35f, 0), {pauldW, pauldW * 0.65f, pauldW * 1.1f}, {1.1f, 1.1f, 1.15f, col.w}, 397.0f, attackLunge, 15.0f + deathRoll);
-        appendOrientedBox(verts, position, mobYaw, torsoPos + Vec3( torsoW * 0.55f, torsoH * 0.35f, 0), {pauldW, pauldW * 0.65f, pauldW * 1.1f}, {1.1f, 1.1f, 1.15f, col.w}, 397.0f, attackLunge, -15.0f + deathRoll);
-        // Razor pauldron edge spikes
-        appendOrientedSpike(verts, position, mobYaw, torsoPos + Vec3(-torsoW * 0.65f, torsoH * 0.55f, 0), {0.08f, 0.08f, 0.08f}, 0.20f, {1.3f, 1.3f, 1.4f, col.w}, 397.0f, 0, 35.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, torsoPos + Vec3( torsoW * 0.65f, torsoH * 0.55f, 0), {0.08f, 0.08f, 0.08f}, 0.20f, {1.3f, 1.3f, 1.4f, col.w}, 397.0f, 0, -35.0f + deathRoll);
+        // Torso
+        float torsoPitch = attackLunge;
+        if (type == CreatureType::Ghoul) torsoPitch += 25.0f; // Feral forward hunch
+        Vec3 torsoPos = {0, legH + torsoH * 0.5f, (type == CreatureType::Ghoul ? 0.15f : 0.0f)};
+        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoD}, col, (type == CreatureType::Skeleton ? 394.0f : 398.0f), torsoPitch, deathRoll);
 
         // Arms
         float leftArmPitch = -walkSwing * 0.8f;
         float rightArmPitch = walkSwing * 0.8f;
-        if (state == AIState::Attack) {
+        if (type == CreatureType::Zombie) {
+            leftArmPitch = -72.0f;
+            rightArmPitch = -72.0f;
+        } else if (type == CreatureType::Ghoul) {
+            leftArmPitch = -55.0f + walkSwing * 0.4f;
+            rightArmPitch = -55.0f - walkSwing * 0.4f;
+        } else if (state == AIState::Attack) {
             rightArmPitch = -80.0f;
-        } else if (state == AIState::Chase || type == CreatureType::Zombie) {
-            leftArmPitch = -65.0f;
-            rightArmPitch = -65.0f;
         }
 
-        float armW = legW * 0.9f;
-        float armH = legH * 0.95f;
-        Vec3 leftArmPos = {-torsoW * 0.58f, legH + torsoH * 0.68f, 0};
-        Vec3 rightArmPos = { torsoW * 0.58f, legH + torsoH * 0.68f, 0};
-        appendOrientedBox(verts, position, mobYaw, leftArmPos, {armW, armH, armW}, col * 0.9f, (type == CreatureType::Skeleton ? 394.0f : 398.0f), leftArmPitch + attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, rightArmPos, {armW, armH, armW}, col * 0.9f, (type == CreatureType::Skeleton ? 394.0f : 398.0f), rightArmPitch + attackLunge, deathRoll);
+        float armW = legW * 0.85f;
+        float armH = (type == CreatureType::Ghoul) ? (legH * 1.25f) : (legH * 0.95f); // Gaunt long arms for Ghoul
+        Vec3 leftArmPos = {-torsoW * 0.58f, legH + torsoH * 0.70f, 0};
+        Vec3 rightArmPos = { torsoW * 0.58f, legH + torsoH * 0.70f, 0};
+        appendOrientedBox(verts, position, mobYaw, leftArmPos, {armW, armH, armW}, col * 0.9f, legTex, leftArmPitch + torsoPitch, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, rightArmPos, {armW, armH, armW}, col * 0.9f, legTex, rightArmPitch + torsoPitch, deathRoll);
 
-        // WEAPONS & SHIELDS!
+        // Ghoul Razor Black Claw Talons
+        if (type == CreatureType::Ghoul) {
+            Vec4 talonCol = {0.10f, 0.10f, 0.12f, col.w};
+            appendOrientedSpike(verts, position, mobYaw, leftArmPos + Vec3(-armW * 0.2f, -armH * 0.5f, armW * 0.4f), {0.04f, 0.04f, 0.04f}, 0.20f, talonCol, 394.0f, leftArmPitch + 75.0f, deathRoll);
+            appendOrientedSpike(verts, position, mobYaw, rightArmPos + Vec3( armW * 0.2f, -armH * 0.5f, armW * 0.4f), {0.04f, 0.04f, 0.04f}, 0.20f, talonCol, 394.0f, rightArmPitch + 75.0f, deathRoll);
+            // Protruding dorsal spinal bone ridges
+            appendOrientedSpike(verts, position, mobYaw, torsoPos + Vec3(0, torsoH * 0.35f, -torsoD * 0.55f), {0.06f, 0.06f, 0.06f}, -0.22f, {0.85f, 0.85f, 0.80f, col.w}, 394.0f, -40.0f, deathRoll);
+            appendOrientedSpike(verts, position, mobYaw, torsoPos + Vec3(0, 0, -torsoD * 0.55f), {0.06f, 0.06f, 0.06f}, -0.20f, {0.85f, 0.85f, 0.80f, col.w}, 394.0f, -40.0f, deathRoll);
+        }
+
+        // Weapons
         if (type == CreatureType::Skeleton) {
-            // Honed Steel Broadsword with Razor Wedge Tip in Right Hand!
-            Vec3 swordPos = rightArmPos + Vec3(0, -armH * 0.4f, armW * 0.8f);
-            appendOrientedBox(verts, position, mobYaw, swordPos, {0.08f, 0.65f, 0.16f}, {1.2f, 1.2f, 1.3f, col.w}, 397.0f, rightArmPitch + attackLunge + 25.0f, deathRoll);
-            appendOrientedSpike(verts, position, mobYaw, swordPos + Vec3(0, -0.42f, 0), {0.08f, 0.16f, 0.08f}, -0.22f, {1.4f, 1.4f, 1.5f, col.w}, 397.0f, rightArmPitch + attackLunge + 25.0f, deathRoll);
-            // Wooden Buckler Shield on Left Arm!
-            Vec3 shieldPos = leftArmPos + Vec3(-armW * 0.4f, -0.05f, 0.05f);
-            appendOrientedBox(verts, position, mobYaw, shieldPos, {0.06f, 0.45f, 0.45f}, {0.8f, 0.55f, 0.3f, col.w}, 370.0f, leftArmPitch + attackLunge, deathRoll);
+            // Recurve Bow in Left Hand
+            Vec3 bowPos = leftArmPos + Vec3(-0.06f, -armH * 0.35f, armW * 0.7f);
+            appendOrientedBox(verts, position, mobYaw, bowPos, {0.04f, 0.75f, 0.08f}, {0.60f, 0.40f, 0.20f, col.w}, 398.0f, leftArmPitch + 15.0f, deathRoll);
         } else if (type == CreatureType::Goblin) {
-            // Jagged Dagger with Razor Tip in Right Hand!
+            // Jagged Dagger in Right Hand
             Vec3 daggerPos = rightArmPos + Vec3(0, -armH * 0.35f, armW * 0.6f);
-            appendOrientedWedge(verts, position, mobYaw, daggerPos, {0.06f, 0.35f, 0.14f}, {1.2f, 1.2f, 1.2f, col.w}, 397.0f, rightArmPitch + attackLunge + 30.0f, deathRoll);
+            appendOrientedWedge(verts, position, mobYaw, daggerPos, {0.06f, 0.35f, 0.14f}, {1.2f, 1.2f, 1.2f, col.w}, 397.0f, rightArmPitch + torsoPitch + 30.0f, deathRoll);
         }
 
-        // Chibi Sculpted Head
+        // Head
         float headSz = def.size.x * 0.52f;
-        Vec3 headPos = {0, legH + torsoH + headSz * 0.46f, 0.04f};
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.92f, headSz}, col * 1.1f, (type == CreatureType::Skeleton ? 394.0f : tIdx), attackLunge * 0.5f, deathRoll);
+        Vec3 headPos = {0, legH + torsoH + headSz * 0.46f, (type == CreatureType::Ghoul ? 0.28f : 0.04f)};
+        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.92f, headSz}, col * 1.1f, (type == CreatureType::Skeleton ? 394.0f : tIdx), torsoPitch * 0.5f, deathRoll);
 
-        // Expressive Face Decal Plate
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0, headSz * 0.50f + 0.01f), {headSz * 0.88f, headSz * 0.82f, 0.02f}, {1.0f, 1.0f, 1.0f, col.w}, 395.0f, attackLunge * 0.5f, deathRoll);
+        // Expressive Face / Eye sockets
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0, headSz * 0.50f + 0.01f), {headSz * 0.88f, headSz * 0.82f, 0.02f}, {1.0f, 1.0f, 1.0f, col.w}, 395.0f, torsoPitch * 0.5f, deathRoll);
 
-        // Goblin Trork Ear Wings & Tusks
+        // Goblin Features: Bat Ears & Underbite Tusks
         if (type == CreatureType::Goblin) {
             appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.52f, 0.06f, -0.05f), {0.12f, 0.08f, 0.12f}, -0.32f, col * 1.2f, tIdx, 0, 90.0f + deathRoll);
             appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.52f, 0.06f, -0.05f), {0.12f, 0.08f, 0.12f}, 0.32f, col * 1.2f, tIdx, 0, -90.0f + deathRoll);
-            // Protruding Underbite Tusks
             appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.22f, -headSz * 0.35f, headSz * 0.48f), {0.05f, 0.05f, 0.05f}, 0.18f, {1.3f, 1.3f, 1.2f, col.w}, 394.0f, -25.0f, deathRoll);
             appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.22f, -headSz * 0.35f, headSz * 0.48f), {0.05f, 0.05f, 0.05f}, 0.18f, {1.3f, 1.3f, 1.2f, col.w}, 394.0f, -25.0f, deathRoll);
+        }
+        // Ghoul Glowing Amber Eyes & Fangs
+        else if (type == CreatureType::Ghoul) {
+            Vec4 amberEye = {2.5f, 1.6f, 0.2f, col.w};
+            appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-headSz * 0.25f, 0.05f, headSz * 0.51f), {0.08f, 0.06f, 0.02f}, amberEye, 396.0f, torsoPitch * 0.5f, deathRoll);
+            appendOrientedBox(verts, position, mobYaw, headPos + Vec3( headSz * 0.25f, 0.05f, headSz * 0.51f), {0.08f, 0.06f, 0.02f}, amberEye, 396.0f, torsoPitch * 0.5f, deathRoll);
+            // Vicious fangs
+            appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.18f, -headSz * 0.32f, headSz * 0.50f), {0.04f, 0.04f, 0.04f}, -0.16f, {1.3f, 1.3f, 1.2f, col.w}, 394.0f, 0, deathRoll);
+            appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.18f, -headSz * 0.32f, headSz * 0.50f), {0.04f, 0.04f, 0.04f}, -0.16f, {1.3f, 1.3f, 1.2f, col.w}, 394.0f, 0, deathRoll);
         }
         return;
     }
 
     // =========================================================================
-    // 3. WORLD BOSSES (TitanGolem, MagmaDrake, VoidHarbinger) - EDGY TITAN RIG
-    // =========================================================================
-    if (def.isBoss) {
-        float scale = 1.8f;
-        float legH = def.size.y * 0.45f * scale;
-        float legW = def.size.x * 0.26f * scale;
-        float torsoH = def.size.y * 0.45f * scale;
-        float torsoW = def.size.x * 0.82f * scale;
-
-        // Chiseled Monolithic Stone Legs
-        appendOrientedBox(verts, position, mobYaw, {-torsoW * 0.3f, legH * 0.5f, 0}, {legW, legH, legW}, col * 0.8f, 392.0f, walkSwing * 0.6f, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { torsoW * 0.3f, legH * 0.5f, 0}, {legW, legH, legW}, col * 0.8f, 392.0f, -walkSwing * 0.6f, deathRoll);
-
-        // Massive Monolith Torso
-        Vec3 torsoPos = {0, legH + torsoH * 0.5f, 0};
-        appendOrientedBox(verts, position, mobYaw, torsoPos, {torsoW, torsoH, torsoW * 0.65f}, col, 392.0f, attackLunge, deathRoll);
-
-        // Glowing Core Crest in Center of Chest
-        appendOrientedBox(verts, position, mobYaw, torsoPos + Vec3(0, 0, torsoW * 0.33f + 0.02f), {torsoW * 0.42f, torsoW * 0.42f, 0.04f}, {2.0f, 1.2f, 0.4f, col.w}, 396.0f, attackLunge, deathRoll);
-
-        // Floating Runic Shoulder Monoliths with Obsidian Spikes
-        float pSz = torsoW * 0.40f;
-        float floatHover = std::sin(animTime * 3.0f) * 0.06f;
-        appendOrientedBox(verts, position, mobYaw, {-torsoW * 0.72f, legH + torsoH * 0.85f + floatHover, 0}, {pSz, pSz, pSz}, col * 1.2f, 396.0f, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { torsoW * 0.72f, legH + torsoH * 0.85f + floatHover, 0}, {pSz, pSz, pSz}, col * 1.2f, 396.0f, attackLunge, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, {-torsoW * 0.72f - pSz * 0.5f, legH + torsoH * 0.85f + floatHover, 0}, {0.18f, 0.18f, 0.18f}, -0.35f, col * 0.7f, 392.0f, 0, 90.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, { torsoW * 0.72f + pSz * 0.5f, legH + torsoH * 0.85f + floatHover, 0}, {0.18f, 0.18f, 0.18f}, 0.35f, col * 0.7f, 392.0f, 0, -90.0f + deathRoll);
-
-        // Heavy Hammer Fists with Knuckle Spikes
-        float armSwing = (state == AIState::Attack) ? -85.0f : (walkSwing * 0.5f);
-        float armH = legH * 0.92f;
-        appendOrientedBox(verts, position, mobYaw, {-torsoW * 0.65f, legH * 0.5f, 0}, {legW * 1.35f, armH, legW * 1.35f}, col * 0.9f, 392.0f, -armSwing, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, { torsoW * 0.65f, legH * 0.5f, 0}, {legW * 1.35f, armH, legW * 1.35f}, col * 0.9f, 392.0f, armSwing, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, {-torsoW * 0.65f, legH * 0.30f, legW * 0.68f}, {0.10f, 0.10f, 0.10f}, 0.22f, {1.8f, 0.9f, 0.2f, col.w}, 396.0f, -armSwing + 80.0f, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, { torsoW * 0.65f, legH * 0.30f, legW * 0.68f}, {0.10f, 0.10f, 0.10f}, 0.22f, {1.8f, 0.9f, 0.2f, col.w}, 396.0f,  armSwing + 80.0f, deathRoll);
-
-        // Head with Glowing Runic Visor
-        float headSz = torsoW * 0.46f;
-        Vec3 headPos = {0, legH + torsoH + headSz * 0.38f, 0.1f};
-        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.85f, headSz * 0.85f}, col * 1.3f, 392.0f, attackLunge, deathRoll);
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0, headSz * 0.43f + 0.01f), {headSz * 0.84f, headSz * 0.35f, 0.04f}, {2.8f, 0.8f, 0.2f, col.w}, 396.0f, attackLunge, deathRoll);
-        return;
-    }
-
-    // =========================================================================
-    // 4. QUADRUPEDS (Wolf, Boar, Stag, Sheep, Camel, AlpineGoat) - EDGY BEASTS
+    // 4. QUADRUPEDS (Cow, Sheep, Pig, Horse) - FARM ANIMALS
     // =========================================================================
     float legH = def.size.y * 0.45f;
     float legW = def.size.x * 0.22f;
@@ -802,7 +812,7 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
     float bodyW = def.size.x * 0.72f;
     float bodyD = def.size.z * 1.05f;
 
-    // 4 Articulated Legs
+    // 4 Articulated Legs with Hooves
     float offX = bodyW * 0.35f;
     float offZ = bodyD * 0.34f;
     appendOrientedBox(verts, position, mobYaw, {-offX, legH * 0.5f,  offZ}, {legW, legH, legW}, col * 0.85f, tIdx,  walkSwing, deathRoll);
@@ -810,72 +820,89 @@ void Creature::appendModelVertices(std::vector<VoxelVertex>& verts, float totalT
     appendOrientedBox(verts, position, mobYaw, {-offX, legH * 0.5f, -offZ}, {legW, legH, legW}, col * 0.85f, tIdx, -walkSwing, deathRoll);
     appendOrientedBox(verts, position, mobYaw, { offX, legH * 0.5f, -offZ}, {legW, legH, legW}, col * 0.85f, tIdx,  walkSwing, deathRoll);
 
-    // Torso with Fur Shading
+    // Torso
     Vec3 bodyPos = {0, legH + bodyH * 0.5f, 0};
     appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW, bodyH, bodyD}, col, tIdx, attackLunge, deathRoll);
 
-    // Sculpted Head with 3D Snout & Expressive Eyes
+    // Head
     float headSz = def.size.x * 0.50f;
     Vec3 headPos = {0, legH + bodyH * 0.82f, offZ + headSz * 0.42f};
-    appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.90f, headSz}, col * 1.12f, tIdx, attackLunge, deathRoll);
 
-    // Expressive Eye Plate
-    appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, 0.05f, headSz * 0.50f + 0.01f), {headSz * 0.84f, headSz * 0.65f, 0.02f}, {1.0f, 1.0f, 1.0f, col.w}, 395.0f, attackLunge, deathRoll);
+    // =========================
+    // COW SPECIFICS
+    // =========================
+    if (type == CreatureType::Cow) {
+        // Black patches on white body
+        Vec4 darkPatch = {0.15f, 0.15f, 0.18f, col.w};
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(-bodyW * 0.25f, bodyH * 0.20f, 0.15f), {bodyW * 0.55f, bodyH * 0.65f, bodyD * 0.45f}, darkPatch, tIdx, attackLunge, deathRoll);
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3( bodyW * 0.30f, -bodyH * 0.10f, -0.20f), {bodyW * 0.45f, bodyH * 0.55f, bodyD * 0.40f}, darkPatch, tIdx, attackLunge, deathRoll);
 
-    if (type == CreatureType::Wolf) {
-        // Shadowfang Wolf: Sleek, Aggressive, Edgy Predator Design
-        // 1. Tapered Predator Wedge Snout
-        appendOrientedWedge(verts, position, mobYaw, headPos + Vec3(0, -headSz * 0.15f, headSz * 0.40f), {headSz * 0.46f, headSz * 0.32f, headSz * 0.52f}, col * 1.05f, 390.0f, attackLunge, deathRoll);
+        // Head with pink muzzle
+        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.88f, headSz}, col, tIdx, attackLunge, deathRoll);
+        Vec4 pinkMuzzle = {0.95f, 0.72f, 0.75f, col.w};
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -headSz * 0.20f, headSz * 0.45f), {headSz * 0.68f, headSz * 0.42f, headSz * 0.35f}, pinkMuzzle, 398.0f, attackLunge, deathRoll);
 
-        // 2. Razor Upper Fangs (Ivory Spikes protruding down)
-        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.16f, -headSz * 0.28f, headSz * 0.58f), {0.04f, 0.04f, 0.04f}, -0.14f, {1.2f, 1.2f, 1.15f, col.w}, 394.0f, attackLunge, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.16f, -headSz * 0.28f, headSz * 0.58f), {0.04f, 0.04f, 0.04f}, -0.14f, {1.2f, 1.2f, 1.15f, col.w}, 394.0f, attackLunge, deathRoll);
+        // Curved Ivory Horns
+        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.38f, headSz * 0.45f, 0), {0.06f, 0.06f, 0.06f}, 0.24f, {1.2f, 1.2f, 1.15f, col.w}, 394.0f, 15.0f, 25.0f + deathRoll);
+        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.38f, headSz * 0.45f, 0), {0.06f, 0.06f, 0.06f}, 0.24f, {1.2f, 1.2f, 1.15f, col.w}, 394.0f, 15.0f, -25.0f + deathRoll);
 
-        // 3. Razor Predator Ears (Swept back spikes)
-        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.32f, headSz * 0.45f, -0.05f), {0.12f, 0.10f, 0.10f}, 0.28f, col * 1.25f, 390.0f, 15.0f, 22.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.32f, headSz * 0.45f, -0.05f), {0.12f, 0.10f, 0.10f}, 0.28f, col * 1.25f, 390.0f, 15.0f, -22.0f + deathRoll);
+        // Bovine Floppy Ears
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-headSz * 0.52f, 0.10f, -0.05f), {0.12f, 0.08f, 0.18f}, darkPatch, tIdx, 0, 20.0f + deathRoll);
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3( headSz * 0.52f, 0.10f, -0.05f), {0.12f, 0.08f, 0.18f}, darkPatch, tIdx, 0, -20.0f + deathRoll);
 
-        // 4. Aggressive Spiked Dorsal Mane (3 Razor fur quills running down the nape)
-        appendOrientedSpike(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.48f, offZ * 0.70f), {0.15f, 0.12f, 0.15f}, 0.24f, col * 1.2f, 390.0f, -25.0f, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.48f, 0.0f), {0.15f, 0.12f, 0.15f}, 0.22f, col * 1.2f, 390.0f, -25.0f, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.48f, -offZ * 0.70f), {0.15f, 0.12f, 0.15f}, 0.20f, col * 1.2f, 390.0f, -25.0f, deathRoll);
-
-        // 5. Razor Claws on Front Paws
-        appendOrientedSpike(verts, position, mobYaw, {-offX - 0.04f, 0.04f, offZ + legW * 0.5f}, {0.03f, 0.03f, 0.03f}, 0.07f, {0.15f, 0.15f, 0.18f, col.w}, 394.0f, -80.0f, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, {-offX + 0.04f, 0.04f, offZ + legW * 0.5f}, {0.03f, 0.03f, 0.03f}, 0.07f, {0.15f, 0.15f, 0.18f, col.w}, 394.0f, -80.0f, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, { offX - 0.04f, 0.04f, offZ + legW * 0.5f}, {0.03f, 0.03f, 0.03f}, 0.07f, {0.15f, 0.15f, 0.18f, col.w}, 394.0f, -80.0f, deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, { offX + 0.04f, 0.04f, offZ + legW * 0.5f}, {0.03f, 0.03f, 0.03f}, 0.07f, {0.15f, 0.15f, 0.18f, col.w}, 394.0f, -80.0f, deathRoll);
-
-        // Bushy Tail
-        float tailSway = std::sin(animTime * 7.0f) * 22.0f;
-        appendOrientedBox(verts, position, mobYaw, {0, legH + bodyH * 0.65f, -offZ - 0.25f}, {0.16f, 0.16f, 0.55f}, col * 0.95f, 390.0f, 30.0f, tailSway + deathRoll);
+        // Pink Udder beneath belly
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(0, -bodyH * 0.42f, -bodyD * 0.20f), {bodyW * 0.35f, 0.12f, bodyD * 0.25f}, pinkMuzzle, 398.0f, 0, deathRoll);
     }
-    else if (type == CreatureType::Boar) {
-        // 3D Wedge Snout with Razor Ivory Tusks
-        appendOrientedWedge(verts, position, mobYaw, headPos + Vec3(0, -headSz * 0.14f, headSz * 0.36f), {headSz * 0.58f, headSz * 0.40f, headSz * 0.48f}, col * 1.1f, 390.0f, attackLunge, deathRoll);
-        // Menacing upward curving tusks
-        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3(-headSz * 0.42f, -0.08f, headSz * 0.44f), {0.07f, 0.07f, 0.07f}, 0.32f, {1.3f, 1.3f, 1.2f, col.w}, 394.0f, -40.0f, 20.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, headPos + Vec3( headSz * 0.42f, -0.08f, headSz * 0.44f), {0.07f, 0.07f, 0.07f}, 0.32f, {1.3f, 1.3f, 1.2f, col.w}, 394.0f, -40.0f, -20.0f + deathRoll);
-    }
-    else if (type == CreatureType::Stag) {
-        // Multi-tier Branching Antlers
-        Vec3 antlerBase = headPos + Vec3(0, headSz * 0.52f + 0.05f, -0.05f);
-        appendOrientedSpike(verts, position, mobYaw, antlerBase + Vec3(-0.25f, 0.10f, 0), {0.08f, 0.08f, 0.08f}, 0.65f, {1.1f, 1.05f, 0.9f, col.w}, 394.0f, 0, 32.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, antlerBase + Vec3( 0.25f, 0.10f, 0), {0.08f, 0.08f, 0.08f}, 0.65f, {1.1f, 1.05f, 0.9f, col.w}, 394.0f, 0, -32.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, antlerBase + Vec3(-0.38f, 0.35f, 0.1f), {0.06f, 0.06f, 0.06f}, 0.35f, {1.1f, 1.05f, 0.9f, col.w}, 394.0f, 25.0f, 20.0f + deathRoll);
-        appendOrientedSpike(verts, position, mobYaw, antlerBase + Vec3( 0.38f, 0.35f, 0.1f), {0.06f, 0.06f, 0.06f}, 0.35f, {1.1f, 1.05f, 0.9f, col.w}, 394.0f, 25.0f, -20.0f + deathRoll);
-    }
+    // =========================
+    // SHEEP SPECIFICS
+    // =========================
     else if (type == CreatureType::Sheep) {
-        // Fluffy Wool Layers
-        appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW * 1.18f, bodyH * 1.15f, bodyD * 1.12f}, {1.05f, 1.05f, 1.02f, col.w}, 390.0f, attackLunge, deathRoll);
+        // Fluffy Wool Outer Coat
+        appendOrientedBox(verts, position, mobYaw, bodyPos, {bodyW * 1.22f, bodyH * 1.20f, bodyD * 1.15f}, {1.05f, 1.05f, 1.02f, col.w}, 390.0f, attackLunge, deathRoll);
+        // Head
+        appendOrientedBox(verts, position, mobYaw, headPos, {headSz * 0.85f, headSz * 0.85f, headSz * 0.85f}, {0.35f, 0.35f, 0.38f, col.w}, 390.0f, attackLunge, deathRoll);
         // Floppy Ears
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-headSz * 0.52f, 0.05f, 0), {0.12f, 0.20f, 0.1f}, {0.3f, 0.3f, 0.3f, col.w}, 390.0f, 0, 25.0f + deathRoll);
-        appendOrientedBox(verts, position, mobYaw, headPos + Vec3( headSz * 0.52f, 0.05f, 0), {0.12f, 0.20f, 0.1f}, {0.3f, 0.3f, 0.3f, col.w}, 390.0f, 0, -25.0f + deathRoll);
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-headSz * 0.48f, 0.05f, 0), {0.10f, 0.18f, 0.10f}, {0.35f, 0.35f, 0.38f, col.w}, 390.0f, 0, 25.0f + deathRoll);
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3( headSz * 0.48f, 0.05f, 0), {0.10f, 0.18f, 0.10f}, {0.35f, 0.35f, 0.38f, col.w}, 390.0f, 0, -25.0f + deathRoll);
     }
-    else if (type == CreatureType::AlpineGoat) {
-        // Swept-back Faceted Mountain Horns
-        appendOrientedWedge(verts, position, mobYaw, headPos + Vec3(-headSz * 0.30f, headSz * 0.48f, -0.05f), {0.10f, 0.12f, 0.38f}, {1.2f, 1.15f, 0.95f, col.w}, 394.0f, 45.0f, 15.0f + deathRoll);
-        appendOrientedWedge(verts, position, mobYaw, headPos + Vec3( headSz * 0.30f, headSz * 0.48f, -0.05f), {0.10f, 0.12f, 0.38f}, {1.2f, 1.15f, 0.95f, col.w}, 394.0f, 45.0f, -15.0f + deathRoll);
+    // =========================
+    // PIG SPECIFICS
+    // =========================
+    else if (type == CreatureType::Pig) {
+        // Head
+        appendOrientedBox(verts, position, mobYaw, headPos, {headSz, headSz * 0.88f, headSz}, col, tIdx, attackLunge, deathRoll);
+        // Distinct Snout Box
+        Vec4 darkerPink = {0.92f, 0.60f, 0.65f, col.w};
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(0, -headSz * 0.18f, headSz * 0.44f), {headSz * 0.52f, headSz * 0.36f, headSz * 0.32f}, darkerPink, 398.0f, attackLunge, deathRoll);
+        // Pointed Ears
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3(-headSz * 0.36f, headSz * 0.42f, 0), {0.10f, 0.14f, 0.08f}, darkerPink, 398.0f, 20.0f, 15.0f + deathRoll);
+        appendOrientedBox(verts, position, mobYaw, headPos + Vec3( headSz * 0.36f, headSz * 0.42f, 0), {0.10f, 0.14f, 0.08f}, darkerPink, 398.0f, 20.0f, -15.0f + deathRoll);
+        // Curly Tail
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.20f, -bodyD * 0.52f), {0.06f, 0.12f, 0.10f}, darkerPink, 398.0f, 30.0f, deathRoll);
+    }
+    // =========================
+    // HORSE SPECIFICS
+    // =========================
+    else if (type == CreatureType::Horse) {
+        // Arched Neck
+        Vec3 neckPos = bodyPos + Vec3(0, bodyH * 0.55f, offZ * 0.70f);
+        appendOrientedBox(verts, position, mobYaw, neckPos, {bodyW * 0.38f, bodyH * 0.85f, bodyD * 0.45f}, col, tIdx, -32.0f + attackLunge, deathRoll);
+
+        // Head atop neck
+        Vec3 horseHeadPos = neckPos + Vec3(0, bodyH * 0.58f, 0.28f);
+        appendOrientedBox(verts, position, mobYaw, horseHeadPos, {headSz * 0.75f, headSz * 0.75f, headSz * 1.15f}, col, tIdx, attackLunge, deathRoll);
+
+        // Dark Mane
+        Vec4 maneCol = {0.18f, 0.14f, 0.12f, col.w};
+        appendOrientedBox(verts, position, mobYaw, neckPos + Vec3(0, bodyH * 0.25f, -bodyD * 0.18f), {0.10f, bodyH * 0.82f, 0.14f}, maneCol, 390.0f, -32.0f + attackLunge, deathRoll);
+
+        // Alert Horse Ears
+        appendOrientedSpike(verts, position, mobYaw, horseHeadPos + Vec3(-headSz * 0.22f, headSz * 0.42f, -0.15f), {0.06f, 0.06f, 0.06f}, 0.20f, col * 1.1f, tIdx, 15.0f, 10.0f + deathRoll);
+        appendOrientedSpike(verts, position, mobYaw, horseHeadPos + Vec3( headSz * 0.22f, headSz * 0.42f, -0.15f), {0.06f, 0.06f, 0.06f}, 0.20f, col * 1.1f, tIdx, 15.0f, -10.0f + deathRoll);
+
+        // Long Flowing Tail
+        float tailSway = std::sin(animTime * 6.0f) * 18.0f;
+        appendOrientedBox(verts, position, mobYaw, bodyPos + Vec3(0, bodyH * 0.20f, -bodyD * 0.52f), {0.12f, bodyH * 0.95f, 0.14f}, maneCol, 390.0f, 25.0f, tailSway + deathRoll);
     }
 }
 

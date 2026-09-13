@@ -15,83 +15,96 @@ void MobSpawner::spawnInitial(World* world, const Vec3& playerPos, std::vector<s
         int gy = world->getHighestBlock(static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sz)));
         float sy = static_cast<float>(gy) + 1.0f;
 
-        if (type == CreatureType::Pixie || type == CreatureType::VoidPhantom || type == CreatureType::Harpy) {
-            sy += 1.8f;
-        }
-
         auto c = std::make_unique<Creature>(type, Vec3(sx, sy, sz));
         if (tamed) c->setTamed(true);
         creatures.push_back(std::move(c));
     };
 
-    // Starting wildlife & monsters on surface
-    spawnMob(CreatureType::Sheep, 6.0f, 6.0f);
-    spawnMob(CreatureType::Boar, -8.0f, 6.0f);
-    spawnMob(CreatureType::Stag, 12.0f, -8.0f);
-    spawnMob(CreatureType::Wolf, -12.0f, -10.0f);
-    spawnMob(CreatureType::Pixie, -4.0f, -4.0f, true); // Tamed helper
-    spawnMob(CreatureType::Goblin, 16.0f, 15.0f);
-    spawnMob(CreatureType::Skeleton, -16.0f, 16.0f);
-    spawnMob(CreatureType::TitanGolem, 32.0f, 28.0f); // World Boss
+    // 1. Spawn Farm Animals First around player
+    spawnMob(CreatureType::Cow, 6.0f, 6.0f);
+    spawnMob(CreatureType::Sheep, -8.0f, 6.0f);
+    spawnMob(CreatureType::Pig, 10.0f, -8.0f);
+    spawnMob(CreatureType::Chicken, -6.0f, -6.0f);
+    spawnMob(CreatureType::Horse, -14.0f, -10.0f);
 
-    std::cout << "Spawned " << creatures.size() << " initial creatures safely on terrain surface!" << std::endl;
+    // 2. Spawn Monsters (Zombie, Skeleton, Spider, Ghoul, Goblin)
+    spawnMob(CreatureType::Zombie, 18.0f, 18.0f);
+    spawnMob(CreatureType::Skeleton, -18.0f, 18.0f);
+    spawnMob(CreatureType::Spider, 24.0f, -16.0f);
+    spawnMob(CreatureType::Ghoul, -22.0f, -20.0f);
+    spawnMob(CreatureType::Goblin, 16.0f, -22.0f);
+
+    std::cout << "Spawned " << creatures.size() << " initial farm animals & monsters safely on terrain!" << std::endl;
 }
 
 CreatureType MobSpawner::selectMobForBiome(uint8_t biomeId, int randomSeed) {
     int roll = randomSeed % 100;
 
-    // Biome 0..5: Temperate Plains & Forests
+    // Biome 0..5: Temperate Plains & Forests (Lush Farm Lands)
     if (biomeId <= 5) {
-        if (roll < 30) return CreatureType::Sheep;
-        if (roll < 55) return CreatureType::Boar;
-        if (roll < 75) return CreatureType::Stag;
-        if (roll < 90) return CreatureType::Wolf;
-        return CreatureType::Pixie;
+        if (roll < 20) return CreatureType::Cow;
+        if (roll < 40) return CreatureType::Sheep;
+        if (roll < 60) return CreatureType::Pig;
+        if (roll < 75) return CreatureType::Chicken;
+        if (roll < 88) return CreatureType::Horse;
+        if (roll < 94) return CreatureType::Zombie;
+        return CreatureType::Skeleton;
     }
     // Biome 6..10: Arid & Deserts
     else if (biomeId <= 10) {
-        if (roll < 40) return CreatureType::Camel;
-        if (roll < 70) return CreatureType::Scorpion;
-        if (roll < 90) return CreatureType::Skeleton;
-        return CreatureType::Tortoise;
+        if (roll < 25) return CreatureType::Horse;
+        if (roll < 55) return CreatureType::Skeleton;
+        if (roll < 75) return CreatureType::Ghoul;
+        if (roll < 90) return CreatureType::Spider;
+        return CreatureType::Zombie;
     }
     // Biome 11..15: Cold, Tundra & Taiga
     else if (biomeId <= 15) {
-        if (roll < 45) return CreatureType::AlpineGoat;
-        if (roll < 75) return CreatureType::Wolf;
-        return CreatureType::IceGolem;
+        if (roll < 30) return CreatureType::Sheep;
+        if (roll < 50) return CreatureType::Horse;
+        if (roll < 70) return CreatureType::Zombie;
+        if (roll < 85) return CreatureType::Skeleton;
+        return CreatureType::Ghoul;
     }
     // Biome 16..19: Rainforest & Jungles
     else if (biomeId <= 19) {
-        if (roll < 40) return CreatureType::Goblin;
+        if (roll < 25) return CreatureType::Chicken;
+        if (roll < 45) return CreatureType::Pig;
         if (roll < 70) return CreatureType::Spider;
-        if (roll < 90) return CreatureType::Harpy;
-        return CreatureType::Tortoise;
+        if (roll < 85) return CreatureType::Goblin;
+        return CreatureType::Ghoul;
     }
     // Biome 20..23: Mountainous Crags
     else if (biomeId <= 23) {
-        if (roll < 45) return CreatureType::AlpineGoat;
-        if (roll < 80) return CreatureType::Harpy;
-        return CreatureType::TitanGolem; // Mountain boss chance
-    }
-    // Biome 24..26: Coastal & Aquatic
-    else if (biomeId <= 26) {
-        if (roll < 50) return CreatureType::Tortoise;
-        if (roll < 80) return CreatureType::SwampHag;
-        return CreatureType::Pixie;
-    }
-    // Biome 27..30: Volcanic & Magma
-    else if (biomeId <= 30) {
-        if (roll < 45) return CreatureType::Zombie;
+        if (roll < 30) return CreatureType::Sheep;
+        if (roll < 50) return CreatureType::Horse;
         if (roll < 75) return CreatureType::Goblin;
-        if (roll < 92) return CreatureType::MagmaDrake;
-        return CreatureType::TitanGolem;
+        if (roll < 90) return CreatureType::Skeleton;
+        return CreatureType::Ghoul;
     }
-    // Biome 31..34: Mystical & Void
+    // Biome 24..26: Coastal & Swamps
+    else if (biomeId <= 26) {
+        if (roll < 25) return CreatureType::Cow;
+        if (roll < 50) return CreatureType::Pig;
+        if (roll < 70) return CreatureType::Chicken;
+        if (roll < 85) return CreatureType::Zombie;
+        return CreatureType::Spider;
+    }
+    // Biome 27..30: Volcanic & Dark Lands
+    else if (biomeId <= 30) {
+        if (roll < 30) return CreatureType::Zombie;
+        if (roll < 55) return CreatureType::Ghoul;
+        if (roll < 75) return CreatureType::Spider;
+        if (roll < 90) return CreatureType::Skeleton;
+        return CreatureType::Goblin;
+    }
+    // Biome 31..34: Mystical Caverns & Deep Strata
     else {
-        if (roll < 45) return CreatureType::Pixie;
-        if (roll < 80) return CreatureType::VoidPhantom;
-        return CreatureType::VoidHarbinger; // Rare celestial boss
+        if (roll < 25) return CreatureType::Spider;
+        if (roll < 50) return CreatureType::Ghoul;
+        if (roll < 75) return CreatureType::Goblin;
+        if (roll < 90) return CreatureType::Skeleton;
+        return CreatureType::Zombie;
     }
 }
 
@@ -141,9 +154,6 @@ void MobSpawner::update(World* world, const Vec3& playerPos, std::vector<std::un
                 CreatureType type = selectMobForBiome(biomeId, rand());
 
                 float sy = static_cast<float>(gy) + 1.0f;
-                if (type == CreatureType::Pixie || type == CreatureType::VoidPhantom || type == CreatureType::Harpy) {
-                    sy += 1.8f;
-                }
 
                 creatures.push_back(std::make_unique<Creature>(type, Vec3(sx, sy, sz)));
             }

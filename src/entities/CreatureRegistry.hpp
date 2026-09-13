@@ -8,26 +8,20 @@
 namespace Aetheria {
 
 enum class CreatureType : uint8_t {
+    // Farm Animals First
+    Cow,
     Sheep,
-    Boar,
-    Wolf,
-    Stag,
-    Camel,
-    AlpineGoat,
-    Pixie,
-    Tortoise,
-    Goblin,
-    Skeleton,
+    Pig,
+    Chicken,
+    Horse,
+
+    // Monsters
     Zombie,
+    Skeleton,
     Spider,
-    Scorpion,
-    IceGolem,
-    MagmaDrake,
-    SwampHag,
-    VoidPhantom,
-    Harpy,
-    TitanGolem,
-    VoidHarbinger,
+    Ghoul,
+    Goblin,
+
     COUNT
 };
 

@@ -35,11 +35,23 @@ An advanced **C++17 OpenGL 3.3 Core Profile Voxel RPG Sandbox** that blends the 
   - *Celestial*: Void Peaks, Ethereal Spires.
 - **3D Multi-Octave Caverns**: Subterranean cave systems, winding tunnels, aquifer chambers, and molten magma pools with fluid flow physics.
 
-### 2. 🔮 Palworld-Style Creature Taming & Companion System
+### 2. 🔮 Creature Ecosystem & Palworld-Style Taming System
+- **Farm Animals First (Docile Wildlife & Livestock)**:
+  - **Dairy Cow**: White with black patched coat, curved ivory horns, floppy ears, udder, drops Tanned Leather.
+  - **Highland Sheep**: Fluffy wool fleece coat, distinct dark face and ears, drops Wool.
+  - **Farm Pig**: Rounded pink body, 4 trotters, protruding 3D snout with nostrils, curly tail, drops Savory Feast Meat.
+  - **Farm Chicken**: Plump feathered body, flapping wings, yellow beak, bright red comb & wattle, drops Feathers.
+  - **Wild Steed (Horse)**: Muscular equine torso, arched neck, dark crest mane, tall hooved legs, flowing tail, rapid 6.5 m/s stride.
+- **Monsters (Hostile Foes & Night Terrors)**:
+  - **Draugr Zombie**: Decaying necrotic green skin, forward-extended reaching arms, dark sunken eyes, drops Iron Ingots.
+  - **Skeleton Archer**: Ivory bone structure, exposed ribcage, hollow sockets, wields a recurve bow, drops Bone Meal.
+  - **Cave Spider**: Dedicated 8-legged articulated arachnid model with ripple-wave crawling gait, 6 glowing ruby eyes, venomous pedipalp fangs, drops Silk Rope.
+  - **Crypt Ghoul**: Gaunt ashen-purple predatory fiend, hunched feral posture, elongated arms with razor black talons, protruding spinal bone ridges, glowing amber eyes.
+  - **Goblin Raider**: Short green skirmisher, large pointed bat ears, upward underbite tusks, wields a jagged iron dagger, drops Gold Ingots.
 - **Physical 3D Capture Sphere Projectiles**:
   - Pal Sphere (1.0x capture power)
   - Mega Sphere (2.0x capture power)
-  - Giga Sphere (3.5x capture power, designed for World Bosses)
+  - Giga Sphere (3.5x capture power)
   - Arcing throw physics with parabolic gravity and drag. Missed spheres land safely and can be recovered by walking over them.
 - **3-Stage Wobble Capture Sequence**:
   - Capturing weakened wild creatures pulls them into a physical 3D sphere.
