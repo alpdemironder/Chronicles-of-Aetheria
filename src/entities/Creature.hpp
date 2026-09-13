@@ -69,6 +69,8 @@ public:
     bool isDespawnReady() const { return isDead && deathTimer >= 0.8f; }
     float getDeathTimer() const { return deathTimer; }
     float getAnimTime() const { return animTime; }
+    float getCreeperFuse() const { return creeperFuse; }
+    bool isCreeperExploding() const { return creeperFuse >= 1.35f; }
 
     // Renders hierarchical 3D voxel box model with full yaw orientation
     void appendModelVertices(std::vector<VoxelVertex>& verts, float totalTime) const;
@@ -95,6 +97,7 @@ private:
     float attackCooldown = 0.0f;
     float hurtFlashTimer = 0.0f;
     float animTime = 0.0f;
+    float creeperFuse = 0.0f;
 };
 
 } // namespace Aetheria

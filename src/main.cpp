@@ -309,8 +309,6 @@ int main(int argc, char* argv[]) {
     IVec3 currentMiningPos{0, -999, 0};
     uint16_t currentMiningId = 0;
     float miningSwingTimer = 0.0f;
-    bool hasTargetedBlock = false;
-    IVec3 targetedBlockPos{0, 0, 0};
 
     window->setCursorLocked(false);
 
@@ -552,7 +550,6 @@ int main(int argc, char* argv[]) {
             miningProgress = 0.0f;
             currentMiningPos = {0, -999, 0};
             currentMiningId = 0;
-            hasTargetedBlock = false;
         }
 
         // Handle Active Menu Input or Gameplay Input
@@ -582,13 +579,6 @@ int main(int argc, char* argv[]) {
             player.handleInput(*window, camera, audio.get(), dt, buildingMgr->getIsBuilding());
 
             Ray aimRay(camera.getRenderPosition(), camera.getForward());
-            RaycastResult lookHit = world->raycast(aimRay, 5.5f);
-            if (lookHit.hit && lookHit.blockId != 0 && lookHit.blockId != 52) {
-                hasTargetedBlock = true;
-                targetedBlockPos = lookHit.hitBlockPos;
-            } else {
-                hasTargetedBlock = false;
-            }
 
             // -----------------------------------------------------------------
             // COMBAT & MINECRAFT-STYLE CONTINUOUS BLOCK MINING
@@ -1414,7 +1404,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                hud.render(window->getWidth(), window->getHeight(), player, *world, *buildingMgr, camera, viewProj, hasTargetedBlock, targetedBlockPos, timer.getFPS(), totalTime, dt, camera.getIsZooming(), miningProgress, currentMiningId, aimedWildCreature, aimCatchChance, activeCompanion);
+                hud.render(window->getWidth(), window->getHeight(), player, *world, *buildingMgr, timer.getFPS(), totalTime, dt, camera.getIsZooming(), miningProgress, currentMiningId, aimedWildCreature, aimCatchChance, activeCompanion);
 
                 // Render Floating Overhead Health Bars & Nameplates for Visible Nearby Creatures
                 Creature* closestBoss = nullptr;

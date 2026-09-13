@@ -59,30 +59,24 @@ bool InventoryUI::drawGroundedButton(UIRenderer* ui, float x, float y, float w, 
                                     const Vec4& baseBg) {
     bool hovered = (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h);
 
-    // Authentic Minecraft Stone Beveled Button
-    Vec4 borderOuter(0.0f, 0.0f, 0.0f, 1.0f);
-    Vec4 highlightLight = hovered ? Vec4(1.0f, 1.0f, 1.0f, 1.0f) : (active ? Vec4(0.35f, 0.85f, 1.0f, 1.0f) : Vec4(0.82f, 0.82f, 0.82f, 1.0f));
-    Vec4 shadowDark = hovered ? Vec4(0.35f, 0.35f, 0.35f, 1.0f) : Vec4(0.20f, 0.20f, 0.20f, 1.0f);
-    Vec4 fillBg = active ? Vec4(0.25f, 0.35f, 0.45f, 1.0f) : (hovered ? Vec4(0.55f, 0.55f, 0.58f, 1.0f) : Vec4(0.42f, 0.42f, 0.44f, 1.0f));
+    Vec4 bg = active ? Vec4(accentCol.x * 0.35f, accentCol.y * 0.35f, accentCol.z * 0.35f, 0.95f) :
+              (hovered ? Vec4(0.14f, 0.22f, 0.32f, 0.95f) : baseBg);
+    Vec4 border = active ? accentCol :
+                  (hovered ? Vec4(0.90f, 0.98f, 1.0f, 1.0f) : Vec4(0.24f, 0.32f, 0.44f, 0.75f));
 
-    // Outer black border
-    ui->drawRect(x, y, w, h, borderOuter);
-    // Button body
-    ui->drawRect(x + 1.0f, y + 1.0f, w - 2.0f, h - 2.0f, fillBg);
-    // Top & left bevel highlight
-    ui->drawRect(x + 1.0f, y + 1.0f, w - 2.0f, 2.0f, highlightLight);
-    ui->drawRect(x + 1.0f, y + 1.0f, 2.0f, h - 2.0f, highlightLight);
-    // Bottom & right bevel shadow
-    ui->drawRect(x + 1.0f, y + h - 3.0f, w - 2.0f, 2.0f, shadowDark);
-    ui->drawRect(x + w - 3.0f, y + 1.0f, 2.0f, h - 2.0f, shadowDark);
+    // Edgy chamfered button
+    ui->drawEdgyPanel(x, y, w, h, 4.0f, bg, border, active ? 2.0f : (hovered ? 1.5f : 1.0f));
+
+    // Left accent notch & tech brackets on hover
+    if (active || hovered) {
+        ui->drawRect(x + 2.0f, y + 2.0f, 3.5f, h - 4.0f, accentCol);
+        ui->drawTechBracket(x, y, w, h, 6.0f, 1.2f, accentCol);
+    }
 
     float fontScale = 1.2f;
     float textX = x + (w - text.length() * 6.0f * fontScale) * 0.5f;
     float textY = y + (h - 7.0f * fontScale) * 0.5f;
-    // Minecraft text: yellow on hover, white normal, with 1px black shadow
-    Vec4 textCol = hovered ? Vec4(1.0f, 1.0f, 0.65f, 1.0f) : (active ? Vec4(0.6f, 1.0f, 1.0f, 1.0f) : Vec4(0.92f, 0.92f, 0.92f, 1.0f));
-    ui->drawText(text, textX + 1.0f, textY + 1.0f, fontScale, {0.0f, 0.0f, 0.0f, 1.0f}); // Shadow
-    ui->drawText(text, textX, textY, fontScale, textCol);
+    ui->drawText(text, textX, textY, fontScale, active ? Vec4(1, 1, 1, 1) : (hovered ? Vec4(1, 1, 0.9f, 1) : Vec4(0.85f, 0.90f, 0.95f, 1)));
 
     return hovered && clicked;
 }
@@ -93,70 +87,59 @@ void InventoryUI::renderSlotCard(UIRenderer* ui, float x, float y, float size,
                                 const Vec4& borderCol,
                                 bool isLocked, int reqLevel) {
     if (isLocked) {
-        // Locked slot
-        ui->drawRect(x, y, size, size, {0.18f, 0.18f, 0.20f, 1.0f});
-        ui->drawRect(x, y, size, 1.5f, {0.10f, 0.10f, 0.12f, 1.0f});
-        ui->drawRect(x, y, 1.5f, size, {0.10f, 0.10f, 0.12f, 1.0f});
-        ui->drawRect(x, y + size - 1.5f, size, 1.5f, {0.35f, 0.35f, 0.38f, 1.0f});
-        ui->drawRect(x + size - 1.5f, y, 1.5f, size, {0.35f, 0.35f, 0.38f, 1.0f});
+        Vec4 slotBg = isHovered ? Vec4(0.09f, 0.06f, 0.08f, 0.95f) : Vec4(0.04f, 0.04f, 0.06f, 0.92f);
+        Vec4 outlineCol = isHovered ? Vec4(0.95f, 0.35f, 0.35f, 0.95f) : Vec4(0.22f, 0.16f, 0.20f, 0.7f);
+        float outlineThickness = isHovered ? 1.8f : 1.0f;
+        ui->drawEdgyPanel(x, y, size, size, 4.0f, slotBg, outlineCol, outlineThickness);
 
+        // Padlock icon: shackle & lock body
         float cx = x + size * 0.5f;
         float cy = y + size * 0.36f;
-        ui->drawRectOutline(cx - 5.0f, cy - 6.0f, 10.0f, 7.0f, 1.4f, {0.7f, 0.5f, 0.5f, 0.9f});
-        ui->drawRect(cx - 7.0f, cy, 14.0f, 9.0f, {0.6f, 0.2f, 0.2f, 0.95f});
+        Vec4 metalCol = isHovered ? Vec4(1.0f, 0.45f, 0.45f, 0.95f) : Vec4(0.65f, 0.55f, 0.45f, 0.75f);
+        Vec4 bodyCol  = isHovered ? Vec4(0.75f, 0.20f, 0.20f, 0.95f) : Vec4(0.35f, 0.22f, 0.22f, 0.85f);
+        ui->drawRectOutline(cx - 5.0f, cy - 6.0f, 10.0f, 7.0f, 1.4f, metalCol);
+        ui->drawRect(cx - 7.0f, cy, 14.0f, 9.0f, bodyCol);
         ui->drawRect(cx - 1.0f, cy + 3.0f, 2.0f, 3.0f, {0.1f, 0.1f, 0.1f, 0.95f});
 
+        // Level text requirement: "LV.{reqLevel}"
         std::string lvlTag = "LV." + std::to_string(reqLevel);
         float tW = lvlTag.length() * 5.0f;
-        ui->drawText(lvlTag, cx - tW * 0.5f, y + size - 12.0f, 0.95f, {0.8f, 0.5f, 0.5f, 0.9f});
+        ui->drawText(lvlTag, cx - tW * 0.5f, y + size - 12.0f, 0.95f, isHovered ? Vec4(1.0f, 0.7f, 0.7f, 1.0f) : Vec4(0.65f, 0.55f, 0.55f, 0.8f));
         return;
     }
 
-    // Authentic Minecraft Inset Slot Frame
-    // Slot Background (#8B8B8B)
-    ui->drawRect(x, y, size, size, {0.54f, 0.54f, 0.54f, 1.0f});
-    // Inset Shadow (Dark gray top & left)
-    ui->drawRect(x, y, size, 1.5f, {0.22f, 0.22f, 0.22f, 1.0f});
-    ui->drawRect(x, y, 1.5f, size, {0.22f, 0.22f, 0.22f, 1.0f});
-    // Inset Highlight (White bottom & right)
-    ui->drawRect(x, y + size - 1.5f, size, 1.5f, {0.88f, 0.88f, 0.88f, 1.0f});
-    ui->drawRect(x + size - 1.5f, y, 1.5f, size, {0.88f, 0.88f, 0.88f, 1.0f});
+    Vec4 slotBg = isSelected ? Vec4(0.08f, 0.22f, 0.34f, 0.95f) :
+                  (isHovered ? Vec4(0.14f, 0.20f, 0.28f, 0.92f) : Vec4(0.06f, 0.08f, 0.12f, 0.92f));
 
-    // Hover highlight (white translucent tint)
-    if (isHovered) {
-        ui->drawRect(x + 1.5f, y + 1.5f, size - 3.0f, size - 3.0f, {1.0f, 1.0f, 1.0f, 0.28f});
-    }
+    Vec4 outlineCol = isSelected ? Vec4(0.0f, 0.95f, 1.0f, 1.0f) :
+                      (isHovered ? Vec4(0.95f, 0.95f, 1.0f, 1.0f) : borderCol);
+    float outlineThickness = isSelected ? 2.5f : (isHovered ? 2.0f : 1.0f);
 
-    // Selected Slot: Minecraft 3D Raised White Frame
-    if (isSelected) {
-        float fx = x - 2.5f;
-        float fy = y - 2.5f;
-        float fSize = size + 5.0f;
-        ui->drawRect(fx, fy, fSize, 2.5f, {1.0f, 1.0f, 1.0f, 1.0f});
-        ui->drawRect(fx, fy, 2.5f, fSize, {1.0f, 1.0f, 1.0f, 1.0f});
-        ui->drawRect(fx, fy + fSize - 2.5f, fSize, 2.5f, {0.35f, 0.35f, 0.35f, 1.0f});
-        ui->drawRect(fx + fSize - 2.5f, fy, 2.5f, fSize, {0.35f, 0.35f, 0.35f, 1.0f});
+    // Sleek chamfered slot card
+    ui->drawEdgyPanel(x, y, size, size, 4.0f, slotBg, outlineCol, outlineThickness);
+    if (isSelected || isHovered) {
+        ui->drawTechBracket(x, y, size, size, 6.0f, 1.2f, isSelected ? Vec4(0.0f, 0.95f, 1.0f, 1.0f) : Vec4(1, 1, 1, 0.9f));
     }
 
     if (stack.isEmpty()) {
         if (!placeholder.empty()) {
             float textW = placeholder.length() * 6.0f * 1.0f;
-            ui->drawText(placeholder, x + (size - textW) * 0.5f, y + (size - 7.0f) * 0.5f, 1.0f, {0.35f, 0.40f, 0.45f, 0.75f});
+            ui->drawText(placeholder, x + (size - textW) * 0.5f, y + (size - 7.0f) * 0.5f, 1.0f, {0.35f, 0.42f, 0.50f, 0.7f});
         }
         return;
     }
 
-    // Item preview
+    const auto& def = ItemRegistry::get(stack.id);
+
+    // Fresh 3D Isometric block or stylized RPG icon preview
     ItemIconRenderer::drawItem(ui, x + size * 0.5f, y + size * 0.5f, size - 8.0f, stack.id);
 
-    // Item count badge in Minecraft style (White text with black drop shadow in bottom-right)
+    // Item count badge
     if (stack.count > 1) {
         std::string countStr = std::to_string(stack.count);
         float cW = countStr.length() * 6.0f * 1.15f;
-        float tx = x + size - cW - 2.0f;
-        float ty = y + size - 12.0f;
-        ui->drawText(countStr, tx + 1.0f, ty + 1.0f, 1.15f, {0.0f, 0.0f, 0.0f, 1.0f}); // Shadow
-        ui->drawText(countStr, tx, ty, 1.15f, {1.0f, 1.0f, 1.0f, 1.0f}); // White
+        ui->drawEdgyPanel(x + size - cW - 6.0f, y + size - 14.0f, cW + 6.0f, 13.0f, 3.0f, {0.04f, 0.06f, 0.09f, 0.92f}, {0.18f, 0.28f, 0.38f, 0.8f}, 1.0f);
+        ui->drawText(countStr, x + size - cW - 3.0f, y + size - 12.0f, 1.15f, {1.0f, 1.0f, 0.85f, 1.0f});
     }
 }
 

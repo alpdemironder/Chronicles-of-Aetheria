@@ -19,8 +19,8 @@ enum class CreatureType : uint8_t {
     Zombie,
     Skeleton,
     Spider,
-    Ghoul,
-    Goblin,
+    Creeper,
+    Enderman,
 
     COUNT
 };

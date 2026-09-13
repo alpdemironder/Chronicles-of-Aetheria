@@ -2064,180 +2064,167 @@ void TextureAtlas::generateStructureTexture(int st, uint8_t* out) {
 }
 
 // =============================================================================
-// SMOOTH & EDGY CREATURE TEXTURES (390 to 400)
+// AUTHENTIC 16x16 MINECRAFT MOB TEXTURES (390 to 400)
 // =============================================================================
 void TextureAtlas::generateCreatureTexture(int cr, uint8_t* out) {
     for (int y = 0; y < 16; ++y) {
         for (int x = 0; x < 16; ++x) {
-            // 1. EDGY PREDATOR EYES & BATTLE VISAGE (Layer 395)
+            // Chunky 2x2 Minecraft pixel coordinate grid
+            int bx = x / 2;
+            int by = y / 2;
+            int hash = (bx * 7 + by * 13 + (bx ^ by) * 17) % 100;
+
+            // 1. MINECRAFT ZOMBIE FACE (Layer 395)
             if (cr == TEX_LAYER_CREATURE_HYTALE_EYE) {
-                // Sleek dark matte face plate
-                uint8_t r = 32, g = 36, b = 44;
+                bool isEye = (y >= 5 && y <= 7 && ((x >= 2 && x <= 5) || (x >= 10 && x <= 13)));
+                bool isPupil = (y == 6 && (x == 3 || x == 4 || x == 11 || x == 12));
+                bool isNose = (y >= 8 && y <= 9 && x >= 7 && x <= 8);
+                bool isMouth = (y >= 11 && y <= 13 && x >= 4 && x <= 11);
 
-                // Aggressive angled predator eyes (sharp diagonal slits slanting down towards center)
-                // Left eye: (x in 2..6, y in 5..8); Right eye: (x in 9..13, y in 5..8)
-                int lDist = (6 - x) + (y - 5); // Diagonal slash
-                int rDist = (x - 9) + (y - 5);
-                bool isLeftSlit = (x >= 2 && x <= 6 && y >= 6 && y <= 8 && std::abs(lDist - 3) <= 1);
-                bool isRightSlit = (x >= 9 && x <= 13 && y >= 6 && y <= 8 && std::abs(rDist - 3) <= 1);
-
-                // Heavy angular brow ridge
-                bool isLeftBrow = (y == 5 && x >= 2 && x <= 7);
-                bool isRightBrow = (y == 5 && x >= 8 && x <= 13);
-
-                // White-hot predator slit pupils
-                bool isLeftPupil = (x == 4 && y == 7);
-                bool isRightPupil = (x == 11 && y == 7);
-
-                // Sharp predator fangs / jaw vents
-                bool isFang = (y == 13 && (x == 4 || x == 11)) || (y == 14 && (x == 4 || x == 11));
-                bool isMouthSlit = (y == 12 && x >= 5 && x <= 10);
-
-                // Crimson war markings / carbon stripes
-                bool isWarMark = ((x == 1 || x == 14) && y >= 4 && y <= 11) ||
-                                 ((x == 2 || x == 13) && y >= 9 && y <= 11);
-
-                if (isLeftPupil || isRightPupil) {
-                    r = 255; g = 255; b = 255; // White-hot focal slit
-                } else if (isLeftSlit || isRightSlit) {
-                    r = 255; g = 190; b = 20;  // Glowing amber-gold predator eye
-                } else if (isLeftBrow || isRightBrow) {
-                    r = 14; g = 16; b = 20;    // Aggressive black brow ridge
-                } else if (isFang) {
-                    r = 240; g = 240; b = 230; // Sharp ivory fangs
-                } else if (isMouthSlit) {
-                    r = 16; g = 18; b = 22;    // Dark mouth seam
-                } else if (isWarMark) {
-                    r = 200; g = 35; b = 45;   // Crimson war marking
-                }
-
-                setPix(out, x, y, r, g, b, 255);
-                continue;
-            }
-
-            // 2. HIGH-TECH EDGY ENERGY CORE / RUNES (Layer 396)
-            if (cr == TEX_LAYER_CREATURE_HYTALE_RUNE) {
-                float dx = x - 7.5f;
-                float dy = y - 7.5f;
-                float d = std::sqrt(dx * dx + dy * dy);
-
-                // Sharp faceted diamond core with concentric energy rings
-                float manhattan = std::abs(dx) + std::abs(dy);
-                bool isDiamondEdge = (std::abs(manhattan - 5.0f) < 0.6f);
-                bool isCenterCore = (manhattan < 2.2f);
-                bool isRadialRay = ((x == 7 || x == 8) && y >= 1 && y <= 14) ||
-                                   ((y == 7 || y == 8) && x >= 1 && x <= 14);
-
-                uint8_t r = 12, g = 35, b = 60; // Deep space navy background
-                if (isCenterCore) {
-                    r = 255; g = 255; b = 255; // Blinding energy center
-                } else if (isDiamondEdge || isRadialRay) {
-                    r = 0; g = 235; b = 255;   // Electric neon cyan energy line
+                if (isEye) {
+                    if (isPupil) setPix(out, x, y, 12, 18, 12);
+                    else setPix(out, x, y, 24, 38, 22);
+                } else if (isNose || isMouth) {
+                    setPix(out, x, y, 28, 48, 24);
                 } else {
-                    float glow = std::clamp(1.0f - (d / 8.5f), 0.0f, 1.0f);
-                    r = static_cast<uint8_t>(10.0f + glow * 40.0f);
-                    g = static_cast<uint8_t>(60.0f + glow * 150.0f);
-                    b = static_cast<uint8_t>(90.0f + glow * 165.0f);
+                    // Mottled Minecraft zombie green
+                    if (hash < 25) setPix(out, x, y, 68, 114, 48);
+                    else if (hash < 60) setPix(out, x, y, 82, 134, 56);
+                    else if (hash < 85) setPix(out, x, y, 52, 92, 38);
+                    else setPix(out, x, y, 94, 150, 65);
                 }
-                setPix(out, x, y, r, g, b, 255);
                 continue;
             }
 
-            // 3. EDGY BRUSHED TITANIUM & HONED BLADE STEEL (Layer 397)
-            if (cr == TEX_LAYER_CREATURE_HYTALE_ARMOR) {
-                // Sleek specular reflection streak along diagonal
-                float diag = (x + y) / 30.0f;
-                float shine = std::exp(-std::pow((diag - 0.5f) * 6.0f, 2.0f));
+            // 2. THE ICONIC MINECRAFT CREEPER FACE (Layer 396)
+            if (cr == TEX_LAYER_CREATURE_HYTALE_RUNE) {
+                // Classic Creeper Face Geometry:
+                // Eyes: (x in 2..5, y in 3..6) and (x in 10..13, y in 3..6)
+                bool isEye = (y >= 3 && y <= 6 && ((x >= 2 && x <= 5) || (x >= 10 && x <= 13)));
+                // Nose: (x in 6..9, y in 6..8)
+                bool isNose = (y >= 6 && y <= 8 && x >= 6 && x <= 9);
+                // Center mouth block: (x in 4..11, y in 8..11)
+                bool isMouthCenter = (y >= 8 && y <= 11 && x >= 4 && x <= 11);
+                // Mustache outer drop corners: (x in 4..5 or 10..11, y in 11..14)
+                bool isMouthDrops = (y >= 11 && y <= 14 && ((x >= 4 && x <= 5) || (x >= 10 && x <= 11)));
+                // Center hole of inverted 'U' in mouth: (x in 6..9, y in 11..14) - NOT black!
+                bool isMouthCavity = (y >= 11 && y <= 14 && x >= 6 && x <= 9);
 
-                bool isOuterBorder = (x == 0 || x == 15 || y == 0 || y == 15);
-                bool isChamfer = (x == 1 || x == 14 || y == 1 || y == 14);
-                bool isCenterSpine = (x == y);
+                bool isCreeperFeature = (isEye || isNose || isMouthCenter || isMouthDrops) && !isMouthCavity;
 
-                uint8_t r = static_cast<uint8_t>(90.0f + shine * 140.0f);
-                uint8_t g = static_cast<uint8_t>(98.0f + shine * 145.0f);
-                uint8_t b = static_cast<uint8_t>(112.0f + shine * 140.0f);
-
-                if (isCenterSpine) {
-                    r = 240; g = 245; b = 255; // Honed razor spine reflection
-                } else if (isOuterBorder) {
-                    r = 25; g = 28; b = 36;    // Deep gunmetal outer chamfer
-                } else if (isChamfer) {
-                    r = 0; g = 210; b = 245;   // Neon cyan accent border trim
+                if (isCreeperFeature) {
+                    // Pitch black / deep charcoal Creeper mouth and sockets
+                    if ((x + y) % 3 == 0) setPix(out, x, y, 14, 18, 14);
+                    else setPix(out, x, y, 8, 10, 8);
+                } else {
+                    // Authentic mottled Minecraft Creeper green camo
+                    if (hash < 30) setPix(out, x, y, 118, 188, 48);      // Lime
+                    else if (hash < 65) setPix(out, x, y, 80, 142, 34);  // Medium green
+                    else if (hash < 85) setPix(out, x, y, 56, 106, 24);  // Forest green
+                    else setPix(out, x, y, 136, 198, 56);                 // Bright yellow-green
                 }
-
-                setPix(out, x, y, r, g, b, 255);
                 continue;
             }
 
-            // 4. EDGY TACTICAL COMBAT WEAVE (Layer 398)
-            if (cr == TEX_LAYER_CREATURE_HYTALE_CLOTH) {
-                // Carbon fiber diagonal weave
-                bool isWeave = ((x + y) % 4 < 2);
-                bool isHarness = (y >= 6 && y <= 9);
-                bool isBuckle = (isHarness && x >= 6 && x <= 9);
-
-                uint8_t r = isWeave ? 42 : 32;
-                uint8_t g = isWeave ? 46 : 36;
-                uint8_t b = isWeave ? 56 : 44;
-
-                if (isBuckle) {
-                    r = 0; g = 220; b = 240; // High-tech cyan buckle
-                } else if (isHarness) {
-                    r = 20; g = 22; b = 28;  // Reinforced tactical strap
-                }
-                setPix(out, x, y, r, g, b, 255);
+            // 3. MINECRAFT CREEPER / SLIME MOTTLED GREEN BODY (Layer 393)
+            if (cr == TEX_LAYER_CREATURE_PIXIE) {
+                if (hash < 25) setPix(out, x, y, 122, 195, 52);
+                else if (hash < 55) setPix(out, x, y, 84, 148, 36);
+                else if (hash < 80) setPix(out, x, y, 58, 110, 26);
+                else setPix(out, x, y, 142, 208, 62);
                 continue;
             }
 
-            // 5. SMOOTH & EDGY CREATURE MATERIALS
-            float baseR = 190.0f, baseG = 160.0f, baseB = 120.0f;
+            // 4. MINECRAFT SKELETON BONE & SKULL (Layer 394)
+            if (cr == TEX_LAYER_CREATURE_BONE) {
+                bool isEye = (y >= 5 && y <= 7 && ((x >= 2 && x <= 5) || (x >= 10 && x <= 13)));
+                bool isNose = (y >= 8 && y <= 9 && x >= 7 && x <= 8);
+                bool isMouth = (y >= 11 && y <= 13 && x >= 4 && x <= 11 && (x % 2 == 1));
 
+                if (isEye || isNose) {
+                    setPix(out, x, y, 32, 32, 32); // Hollow eye/nose cavity
+                } else if (isMouth) {
+                    setPix(out, x, y, 48, 48, 48); // Tooth division seam
+                } else {
+                    // Weathered bone ivory
+                    if (hash < 30) setPix(out, x, y, 215, 215, 210);
+                    else if (hash < 70) setPix(out, x, y, 192, 192, 185);
+                    else setPix(out, x, y, 168, 168, 160);
+                }
+                continue;
+            }
+
+            // 5. MINECRAFT ENDERMAN OBSIDIAN VOID WITH PURPLE PARTICLES (Layer 392)
+            if (cr == TEX_LAYER_CREATURE_BOSS) {
+                // Rare scattered glowing ender purple sparks
+                if ((x == 4 && y == 5) || (x == 11 && y == 10) || (x == 8 && y == 3) || (x == 13 && y == 13) || (x == 2 && y == 12)) {
+                    setPix(out, x, y, 205, 75, 255); // Vibrant magenta-purple ender spark
+                } else if ((x == 5 && y == 5) || (x == 10 && y == 10) || (x == 7 && y == 4)) {
+                    setPix(out, x, y, 140, 40, 220); // Deep violet glow
+                } else {
+                    // Deep obsidian charcoal void
+                    if (hash < 50) setPix(out, x, y, 18, 16, 22);
+                    else if (hash < 85) setPix(out, x, y, 26, 22, 32);
+                    else setPix(out, x, y, 12, 10, 16);
+                }
+                continue;
+            }
+
+            // 6. MINECRAFT SPIDER CHITIN (Layer 391)
+            if (cr == TEX_LAYER_CREATURE_SCALE) {
+                // Two glowing ruby eyes in center
+                bool isCenterEye = (y >= 6 && y <= 8 && ((x >= 4 && x <= 6) || (x >= 9 && x <= 11)));
+                bool isSideEye = ((y == 5 || y == 9) && (x == 3 || x == 12));
+
+                if (isCenterEye) {
+                    setPix(out, x, y, 240, 25, 25); // Glowing ruby red spider eye
+                } else if (isSideEye) {
+                    setPix(out, x, y, 180, 15, 15); // Secondary small red eyes
+                } else {
+                    // Dark brownish-black spider chitin
+                    if (hash < 35) setPix(out, x, y, 28, 22, 20);
+                    else if (hash < 75) setPix(out, x, y, 38, 30, 26);
+                    else setPix(out, x, y, 18, 14, 12);
+                }
+                continue;
+            }
+
+            // 7. MINECRAFT WOOL & ANIMAL HIDE (Layer 390)
             if (cr == TEX_LAYER_CREATURE_FUR) {
-                // Smooth directional gradient with razor specular streaks (No pixelated noise)
-                float gradY = static_cast<float>(y) / 15.0f;
-                baseR = 135.0f + gradY * 65.0f;
-                baseG = 115.0f + gradY * 55.0f;
-                baseB = 95.0f + gradY * 45.0f;
-                // Razor directional fur gleams
-                if (x % 5 == (y % 3)) {
-                    baseR += 30.0f; baseG += 25.0f; baseB += 20.0f;
-                }
-            } else if (cr == TEX_LAYER_CREATURE_SCALE) {
-                // Smooth Hexagonal Chitin Armor (Sleek predatory scales)
-                float hx = (x % 6) - 3.0f;
-                float hy = (y % 6) - 3.0f;
-                float dist = std::sqrt(hx * hx + hy * hy);
-                float plateShade = std::clamp(1.0f - (dist / 3.8f), 0.0f, 1.0f);
-                baseR = 30.0f + plateShade * 65.0f;
-                baseG = 140.0f + plateShade * 95.0f;
-                baseB = 90.0f + plateShade * 75.0f;
-            } else if (cr == TEX_LAYER_CREATURE_BOSS) {
-                // Matte Obsidian Carbon with glowing razor magma fissures
-                baseR = 30.0f; baseG = 32.0f; baseB = 40.0f;
-                // Razor energy veins
-                if (x == y || (x + y == 15 && x >= 4 && x <= 11)) {
-                    baseR = 255.0f; baseG = 95.0f; baseB = 15.0f; // Searing magma fissure
-                } else if (std::abs(x - y) == 1) {
-                    baseR = 180.0f; baseG = 50.0f; baseB = 10.0f; // Magma heat glow
-                }
-            } else if (cr == TEX_LAYER_CREATURE_PIXIE) {
-                // Ultra-smooth prismatic iridescent gradient
-                float grad = static_cast<float>(x + y) / 30.0f;
-                baseR = 80.0f + grad * 120.0f;
-                baseG = 210.0f - grad * 60.0f;
-                baseB = 255.0f;
-            } else if (cr == TEX_LAYER_CREATURE_BONE) {
-                // Polished Ivory with smooth gradient and razor suture lines
-                float gradY = static_cast<float>(y) / 15.0f;
-                baseR = 230.0f - gradY * 30.0f;
-                baseG = 225.0f - gradY * 30.0f;
-                baseB = 210.0f - gradY * 30.0f;
-                if (x == 7 && (y >= 4 && y <= 12)) {
-                    baseR = 40.0f; baseG = 42.0f; baseB = 48.0f; // Razor cranial suture
-                }
+                // Chunky Minecraft wool pixel texture
+                if (hash < 30) setPix(out, x, y, 242, 242, 242);
+                else if (hash < 65) setPix(out, x, y, 225, 225, 225);
+                else if (hash < 85) setPix(out, x, y, 208, 208, 208);
+                else setPix(out, x, y, 192, 192, 192);
+                continue;
             }
 
-            setPix(out, x, y, clampU8(baseR), clampU8(baseG), clampU8(baseB), 255);
+            // 8. MINECRAFT ZOMBIE CLOTHES (Cyan Tunic / Indigo Trousers) (Layer 398)
+            if (cr == TEX_LAYER_CREATURE_HYTALE_CLOTH) {
+                if (y < 8) {
+                    // Steve/Zombie Cyan Shirt
+                    if (hash < 35) setPix(out, x, y, 0, 162, 162);
+                    else if (hash < 75) setPix(out, x, y, 0, 138, 138);
+                    else setPix(out, x, y, 0, 180, 180);
+                } else {
+                    // Dark Indigo Blue Trousers
+                    if (hash < 35) setPix(out, x, y, 38, 36, 110);
+                    else if (hash < 75) setPix(out, x, y, 26, 24, 85);
+                    else setPix(out, x, y, 48, 44, 128);
+                }
+                continue;
+            }
+
+            // 9. MINECRAFT IRON & WEAPON MATERIAL (Layer 397)
+            if (cr == TEX_LAYER_CREATURE_HYTALE_ARMOR) {
+                if (hash < 35) setPix(out, x, y, 220, 220, 220);
+                else if (hash < 75) setPix(out, x, y, 185, 185, 185);
+                else setPix(out, x, y, 145, 145, 145);
+                continue;
+            }
+
+            // Default
+            setPix(out, x, y, 160, 160, 160, 255);
         }
     }
 }

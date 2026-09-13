@@ -27,14 +27,14 @@ void MobSpawner::spawnInitial(World* world, const Vec3& playerPos, std::vector<s
     spawnMob(CreatureType::Chicken, -6.0f, -6.0f);
     spawnMob(CreatureType::Horse, -14.0f, -10.0f);
 
-    // 2. Spawn Monsters (Zombie, Skeleton, Spider, Ghoul, Goblin)
+    // 2. Spawn Monsters (Zombie, Skeleton, Spider, Creeper, Enderman)
     spawnMob(CreatureType::Zombie, 18.0f, 18.0f);
     spawnMob(CreatureType::Skeleton, -18.0f, 18.0f);
     spawnMob(CreatureType::Spider, 24.0f, -16.0f);
-    spawnMob(CreatureType::Ghoul, -22.0f, -20.0f);
-    spawnMob(CreatureType::Goblin, 16.0f, -22.0f);
+    spawnMob(CreatureType::Creeper, -22.0f, -20.0f);
+    spawnMob(CreatureType::Enderman, 16.0f, -22.0f);
 
-    std::cout << "Spawned " << creatures.size() << " initial farm animals & monsters safely on terrain!" << std::endl;
+    std::cout << "Spawned " << creatures.size() << " initial farm animals & Minecraft monsters safely on terrain!" << std::endl;
 }
 
 CreatureType MobSpawner::selectMobForBiome(uint8_t biomeId, int randomSeed) {
@@ -42,69 +42,75 @@ CreatureType MobSpawner::selectMobForBiome(uint8_t biomeId, int randomSeed) {
 
     // Biome 0..5: Temperate Plains & Forests (Lush Farm Lands)
     if (biomeId <= 5) {
-        if (roll < 20) return CreatureType::Cow;
-        if (roll < 40) return CreatureType::Sheep;
-        if (roll < 60) return CreatureType::Pig;
-        if (roll < 75) return CreatureType::Chicken;
-        if (roll < 88) return CreatureType::Horse;
-        if (roll < 94) return CreatureType::Zombie;
-        return CreatureType::Skeleton;
+        if (roll < 18) return CreatureType::Cow;
+        if (roll < 36) return CreatureType::Sheep;
+        if (roll < 52) return CreatureType::Pig;
+        if (roll < 66) return CreatureType::Chicken;
+        if (roll < 78) return CreatureType::Horse;
+        if (roll < 88) return CreatureType::Zombie;
+        if (roll < 95) return CreatureType::Skeleton;
+        return CreatureType::Creeper;
     }
     // Biome 6..10: Arid & Deserts
     else if (biomeId <= 10) {
-        if (roll < 25) return CreatureType::Horse;
-        if (roll < 55) return CreatureType::Skeleton;
-        if (roll < 75) return CreatureType::Ghoul;
-        if (roll < 90) return CreatureType::Spider;
-        return CreatureType::Zombie;
+        if (roll < 20) return CreatureType::Horse;
+        if (roll < 45) return CreatureType::Skeleton;
+        if (roll < 65) return CreatureType::Zombie;
+        if (roll < 80) return CreatureType::Spider;
+        if (roll < 92) return CreatureType::Creeper;
+        return CreatureType::Enderman;
     }
     // Biome 11..15: Cold, Tundra & Taiga
     else if (biomeId <= 15) {
-        if (roll < 30) return CreatureType::Sheep;
-        if (roll < 50) return CreatureType::Horse;
-        if (roll < 70) return CreatureType::Zombie;
-        if (roll < 85) return CreatureType::Skeleton;
-        return CreatureType::Ghoul;
+        if (roll < 25) return CreatureType::Sheep;
+        if (roll < 45) return CreatureType::Horse;
+        if (roll < 65) return CreatureType::Zombie;
+        if (roll < 80) return CreatureType::Skeleton;
+        if (roll < 92) return CreatureType::Spider;
+        return CreatureType::Creeper;
     }
     // Biome 16..19: Rainforest & Jungles
     else if (biomeId <= 19) {
-        if (roll < 25) return CreatureType::Chicken;
-        if (roll < 45) return CreatureType::Pig;
-        if (roll < 70) return CreatureType::Spider;
-        if (roll < 85) return CreatureType::Goblin;
-        return CreatureType::Ghoul;
+        if (roll < 20) return CreatureType::Chicken;
+        if (roll < 40) return CreatureType::Pig;
+        if (roll < 60) return CreatureType::Spider;
+        if (roll < 78) return CreatureType::Creeper;
+        if (roll < 90) return CreatureType::Zombie;
+        return CreatureType::Enderman;
     }
     // Biome 20..23: Mountainous Crags
     else if (biomeId <= 23) {
-        if (roll < 30) return CreatureType::Sheep;
-        if (roll < 50) return CreatureType::Horse;
-        if (roll < 75) return CreatureType::Goblin;
-        if (roll < 90) return CreatureType::Skeleton;
-        return CreatureType::Ghoul;
+        if (roll < 25) return CreatureType::Sheep;
+        if (roll < 45) return CreatureType::Horse;
+        if (roll < 65) return CreatureType::Skeleton;
+        if (roll < 80) return CreatureType::Creeper;
+        if (roll < 92) return CreatureType::Spider;
+        return CreatureType::Enderman;
     }
     // Biome 24..26: Coastal & Swamps
     else if (biomeId <= 26) {
-        if (roll < 25) return CreatureType::Cow;
-        if (roll < 50) return CreatureType::Pig;
-        if (roll < 70) return CreatureType::Chicken;
-        if (roll < 85) return CreatureType::Zombie;
-        return CreatureType::Spider;
+        if (roll < 20) return CreatureType::Cow;
+        if (roll < 40) return CreatureType::Pig;
+        if (roll < 58) return CreatureType::Chicken;
+        if (roll < 74) return CreatureType::Zombie;
+        if (roll < 88) return CreatureType::Spider;
+        return CreatureType::Creeper;
     }
     // Biome 27..30: Volcanic & Dark Lands
     else if (biomeId <= 30) {
-        if (roll < 30) return CreatureType::Zombie;
-        if (roll < 55) return CreatureType::Ghoul;
-        if (roll < 75) return CreatureType::Spider;
-        if (roll < 90) return CreatureType::Skeleton;
-        return CreatureType::Goblin;
+        if (roll < 25) return CreatureType::Zombie;
+        if (roll < 45) return CreatureType::Skeleton;
+        if (roll < 65) return CreatureType::Spider;
+        if (roll < 85) return CreatureType::Creeper;
+        return CreatureType::Enderman;
     }
     // Biome 31..34: Mystical Caverns & Deep Strata
     else {
-        if (roll < 25) return CreatureType::Spider;
-        if (roll < 50) return CreatureType::Ghoul;
-        if (roll < 75) return CreatureType::Goblin;
-        if (roll < 90) return CreatureType::Skeleton;
-        return CreatureType::Zombie;
+        if (roll < 20) return CreatureType::Spider;
+        if (roll < 40) return CreatureType::Skeleton;
+        if (roll < 60) return CreatureType::Zombie;
+        if (roll < 80) return CreatureType::Creeper;
+        return CreatureType::Enderman;
     }
 }
 

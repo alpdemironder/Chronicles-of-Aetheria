@@ -35,19 +35,19 @@ An advanced **C++17 OpenGL 3.3 Core Profile Voxel RPG Sandbox** that blends the 
   - *Celestial*: Void Peaks, Ethereal Spires.
 - **3D Multi-Octave Caverns**: Subterranean cave systems, winding tunnels, aquifer chambers, and molten magma pools with fluid flow physics.
 
-### 2. 🔮 Creature Ecosystem & Palworld-Style Taming System
-- **Farm Animals First (Docile Wildlife & Livestock)**:
-  - **Dairy Cow**: White with black patched coat, curved ivory horns, floppy ears, udder, drops Tanned Leather.
-  - **Highland Sheep**: Fluffy wool fleece coat, distinct dark face and ears, drops Wool.
-  - **Farm Pig**: Rounded pink body, 4 trotters, protruding 3D snout with nostrils, curly tail, drops Savory Feast Meat.
-  - **Farm Chicken**: Plump feathered body, flapping wings, yellow beak, bright red comb & wattle, drops Feathers.
-  - **Wild Steed (Horse)**: Muscular equine torso, arched neck, dark crest mane, tall hooved legs, flowing tail, rapid 6.5 m/s stride.
-- **Monsters (Hostile Foes & Night Terrors)**:
-  - **Draugr Zombie**: Decaying necrotic green skin, forward-extended reaching arms, dark sunken eyes, drops Iron Ingots.
-  - **Skeleton Archer**: Ivory bone structure, exposed ribcage, hollow sockets, wields a recurve bow, drops Bone Meal.
-  - **Cave Spider**: Dedicated 8-legged articulated arachnid model with ripple-wave crawling gait, 6 glowing ruby eyes, venomous pedipalp fangs, drops Silk Rope.
-  - **Crypt Ghoul**: Gaunt ashen-purple predatory fiend, hunched feral posture, elongated arms with razor black talons, protruding spinal bone ridges, glowing amber eyes.
-  - **Goblin Raider**: Short green skirmisher, large pointed bat ears, upward underbite tusks, wields a jagged iron dagger, drops Gold Ingots.
+### 2. 🔮 Authentic Minecraft-Style Mob Ecosystem & Companion System
+- **Farm Animals & Peaceful Wildlife**:
+  - **Cow**: Mottled brown & white hide, square head with pink muzzle, horn cuboids, pink udder underneath, 4 blocky legs. Drops Raw Beef and Leather.
+  - **Sheep**: Fluffy white wool fleece coat block, exposed sheep head, slender legs. Drops Wool and Raw Mutton.
+  - **Pig**: Iconic square pink cube body, square head, protruding 3D snout cuboid with nostrils, 4 stubby legs. Drops Raw Porkchops.
+  - **Chicken**: White feather body, head with yellow beak and red wattle, flapping side wings, yellow legs with feet. Drops Feathers and Raw Chicken.
+  - **Horse**: Blocky body, angled neck, head with ears and snout, dark mane, flowing animated tail, 4 hooved legs.
+- **Monsters & Hostile Foes**:
+  - **Creeper**: Iconic mottled green camouflage body, 4 stubby legs, frowning pixel face. Features authentic fuse hissing, visual 32% body swelling & white flashing animation, and lethal explosive detonation!
+  - **Enderman**: Towering 2.9 blocks tall, obsidian void black skin, long slender limbs reaching past knees, glowing purple eye slits. Instantly teleports away with purple particles when attacked!
+  - **Zombie**: Classic Steve geometry with iconic cyan tunic, indigo blue trousers, decaying green skin, and arms permanently outstretched horizontally (-90° pitch).
+  - **Skeleton**: Off-white bones, hollow eye socket skull, exposed ribcage, thin bone limbs, wielding a 3D blocky wooden bow.
+  - **Spider**: Wide flat cephalothorax, bulbous abdomen, 8 glowing ruby red eyes, fangs, and 8 sprawling articulated crawling legs with rippling gait.
 - **Physical 3D Capture Sphere Projectiles**:
   - Pal Sphere (1.0x capture power)
   - Mega Sphere (2.0x capture power)
