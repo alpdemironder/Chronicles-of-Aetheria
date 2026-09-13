@@ -57,6 +57,15 @@ Vec3 BuildingManager::calculateSnapPosition(const Vec3& rawPos, StructureType ty
         }
     }
 
+    // Furniture finer snap to 0.5m grid
+    if (def.category == StructureCategory::Furniture) {
+        return Vec3(
+            std::round(rawPos.x * 2.0f) / 2.0f,
+            std::round(rawPos.y * 2.0f) / 2.0f,
+            std::round(rawPos.z * 2.0f) / 2.0f
+        );
+    }
+
     // Default: grid snap to 1-meter integer positions
     return Vec3(
         std::round(rawPos.x),
@@ -222,13 +231,36 @@ void BuildingManager::creatureAssistBuilding(float dt) {
     }
 }
 
-static void appendBox(std::vector<VoxelVertex>& verts, const Vec3& pos, const Vec3& size, const Vec4& col, float texIndex = 370.0f) {
-    Vec3 h = size * 0.5f;
-    float x0 = pos.x - h.x, x1 = pos.x + h.x;
-    float y0 = pos.y - h.y, y1 = pos.y + h.y;
-    float z0 = pos.z - h.z, z1 = pos.z + h.z;
+static void appendRotatedBox(
+    std::vector<VoxelVertex>& verts,
+    const Vec3& centerPos,
+    const Vec3& boxRelPos,
+    const Vec3& boxSize,
+    const Vec4& col,
+    float texIndex,
+    float rotY = 0.0f
+) {
+    float cosA = std::cos(rotY);
+    float sinA = std::sin(rotY);
 
-    // 6 Faces
+    Vec3 rotOffset = {
+        boxRelPos.x * cosA - boxRelPos.z * sinA,
+        boxRelPos.y,
+        boxRelPos.x * sinA + boxRelPos.z * cosA
+    };
+    Vec3 subCenter = centerPos + rotOffset;
+    Vec3 h = boxSize * 0.5f;
+
+    auto rotPt = [&](float lx, float ly, float lz) -> Vec3 {
+        float rx = lx * cosA - lz * sinA;
+        float rz = lx * sinA + lz * cosA;
+        return { subCenter.x + rx, subCenter.y + ly, subCenter.z + rz };
+    };
+
+    auto rotNorm = [&](float nx, float ny, float nz) -> Vec3 {
+        return { nx * cosA - nz * sinA, ny, nx * sinA + nz * cosA };
+    };
+
     auto addQuad = [&](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, const Vec3& n, float shade) {
         Vec4 c = {col.x * shade, col.y * shade, col.z * shade, col.w};
         verts.push_back({p0.x, p0.y, p0.z, 0, 0, n.x, n.y, n.z, c.x, c.y, c.z, c.w, texIndex});
@@ -239,28 +271,53 @@ static void appendBox(std::vector<VoxelVertex>& verts, const Vec3& pos, const Ve
         verts.push_back({p3.x, p3.y, p3.z, 0, 1, n.x, n.y, n.z, c.x, c.y, c.z, c.w, texIndex});
     };
 
-    addQuad({x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}, {0, 1, 0}, 1.0f);  // Top
-    addQuad({x0, y0, z0}, {x1, y0, z0}, {x1, y0, z1}, {x0, y0, z1}, {0, -1, 0}, 0.5f); // Bottom
-    addQuad({x0, y0, z1}, {x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}, {0, 0, 1}, 0.85f); // Front
-    addQuad({x1, y0, z0}, {x0, y0, z0}, {x0, y1, z0}, {x1, y1, z0}, {0, 0, -1}, 0.8f); // Back
-    addQuad({x1, y0, z1}, {x1, y0, z0}, {x1, y1, z0}, {x1, y1, z1}, {1, 0, 0}, 0.7f);  // Right
-    addQuad({x0, y0, z0}, {x0, y0, z1}, {x0, y1, z1}, {x0, y1, z0}, {-1, 0, 0}, 0.75f);// Left
+    Vec3 p000 = rotPt(-h.x, -h.y, -h.z);
+    Vec3 p100 = rotPt( h.x, -h.y, -h.z);
+    Vec3 p110 = rotPt( h.x,  h.y, -h.z);
+    Vec3 p010 = rotPt(-h.x,  h.y, -h.z);
+    Vec3 p001 = rotPt(-h.x, -h.y,  h.z);
+    Vec3 p101 = rotPt( h.x, -h.y,  h.z);
+    Vec3 p111 = rotPt( h.x,  h.y,  h.z);
+    Vec3 p011 = rotPt(-h.x,  h.y,  h.z);
+
+    Vec3 nTop = rotNorm(0, 1, 0);
+    Vec3 nBot = rotNorm(0, -1, 0);
+    Vec3 nFront = rotNorm(0, 0, 1);
+    Vec3 nBack = rotNorm(0, 0, -1);
+    Vec3 nRight = rotNorm(1, 0, 0);
+    Vec3 nLeft = rotNorm(-1, 0, 0);
+
+    // Top face (+Y)
+    addQuad(p011, p111, p110, p010, nTop, 1.0f);
+    // Bottom face (-Y)
+    addQuad(p000, p100, p101, p001, nBot, 0.5f);
+    // Front face (+Z)
+    addQuad(p001, p101, p111, p011, nFront, 0.85f);
+    // Back face (-Z)
+    addQuad(p100, p000, p010, p110, nBack, 0.8f);
+    // Right face (+X)
+    addQuad(p101, p100, p110, p111, nRight, 0.7f);
+    // Left face (-X)
+    addQuad(p000, p001, p011, p010, nLeft, 0.75f);
 }
 
-void BuildingManager::rebuildStructureMesh() {
-    std::vector<VoxelVertex> verts;
-    verts.reserve(structures.size() * 36);
+static void appendStructureGeometry(
+    std::vector<VoxelVertex>& verts,
+    StructureType type,
+    const Vec3& pos,
+    float rotY,
+    const Vec4& col,
+    float overrideTexIdx = -1.0f
+) {
+    const auto& def = StructureRegistry::get(type);
+    int woodVariant = -1, woodSpecies = -1;
+    bool isWood = StructureRegistry::isWoodVariant(type, woodVariant, woodSpecies);
 
-    for (const auto& s : structures) {
-        const auto& def = StructureRegistry::get(s.type);
-        Vec4 col = {1.0f, 1.0f, 1.0f, 1.0f};
-        if (!s.isCompleted) {
-            // Scaffold blueprint look: bright translucent amber
-            col = {1.2f, 0.9f, 0.3f, 0.75f};
-        }
-
-        float tIdx = 370.0f; // Default wood plank
-        switch (s.type) {
+    float tIdx = overrideTexIdx >= 0.0f ? overrideTexIdx : 370.0f;
+    if (isWood) {
+        tIdx = static_cast<float>(72 + woodSpecies * 3);
+    } else {
+        switch (type) {
         case StructureType::Foundation_Wood: tIdx = 370.0f; break;
         case StructureType::Foundation_Stone: tIdx = 371.0f; break;
         case StructureType::Foundation_Metal: tIdx = 373.0f; break;
@@ -277,8 +334,104 @@ void BuildingManager::rebuildStructureMesh() {
         case StructureType::Pal_Bed: tIdx = 381.0f; break;
         default: tIdx = 370.0f; break;
         }
+    }
 
-        appendBox(verts, s.position, def.size, col, tIdx);
+    if (overrideTexIdx >= 0.0f) {
+        tIdx = overrideTexIdx;
+    }
+
+    if (isWood) {
+        switch (static_cast<WoodPieceVariant>(woodVariant)) {
+        case WoodPieceVariant::Stairs: {
+            // Lower step
+            appendRotatedBox(verts, pos, {0.0f, -0.5f, 0.0f}, {2.0f, 1.0f, 2.0f}, col, tIdx, rotY);
+            // Upper step (back half)
+            appendRotatedBox(verts, pos, {0.0f, 0.5f, 0.5f}, {2.0f, 1.0f, 1.0f}, col, tIdx, rotY);
+            return;
+        }
+        case WoodPieceVariant::Trapdoor: {
+            // Main slatted panel
+            appendRotatedBox(verts, pos, {0.0f, 0.0f, 0.0f}, {1.96f, 0.16f, 1.96f}, col, tIdx, rotY);
+            // 2 reinforcement cross battens
+            appendRotatedBox(verts, pos, {-0.55f, 0.08f, 0.0f}, {0.18f, 0.06f, 1.96f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.55f, 0.08f, 0.0f}, {0.18f, 0.06f, 1.96f}, col, tIdx, rotY);
+            return;
+        }
+        case WoodPieceVariant::Slab: {
+            // Half-height bottom slab
+            appendRotatedBox(verts, pos, {0.0f, -0.5f, 0.0f}, {2.0f, 1.0f, 2.0f}, col, tIdx, rotY);
+            return;
+        }
+        case WoodPieceVariant::SideSlab: {
+            // Half-width vertical partition slab
+            appendRotatedBox(verts, pos, {-0.5f, 0.0f, 0.0f}, {1.0f, 2.0f, 2.0f}, col, tIdx, rotY);
+            return;
+        }
+        case WoodPieceVariant::Chair: {
+            // 4 legs
+            appendRotatedBox(verts, pos, {-0.28f, -0.38f, -0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.28f, -0.38f, -0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, {-0.28f, -0.38f,  0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.28f, -0.38f,  0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            // Seat plank
+            appendRotatedBox(verts, pos, {0.0f, -0.06f, 0.0f}, {0.74f, 0.10f, 0.74f}, col, tIdx, rotY);
+            // Backrest posts
+            appendRotatedBox(verts, pos, {-0.28f, 0.35f, -0.30f}, {0.08f, 0.72f, 0.08f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.28f, 0.35f, -0.30f}, {0.08f, 0.72f, 0.08f}, col, tIdx, rotY);
+            // Backrest top splat
+            appendRotatedBox(verts, pos, {0.0f, 0.50f, -0.30f}, {0.64f, 0.30f, 0.06f}, col, tIdx, rotY);
+            return;
+        }
+        case WoodPieceVariant::Bench: {
+            // 6 legs
+            appendRotatedBox(verts, pos, {-0.85f, -0.38f, -0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.00f, -0.38f, -0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.85f, -0.38f, -0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, {-0.85f, -0.38f,  0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.00f, -0.38f,  0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.85f, -0.38f,  0.28f}, {0.10f, 0.54f, 0.10f}, col, tIdx, rotY);
+            // Wide bench seat
+            appendRotatedBox(verts, pos, {0.0f, -0.06f, 0.0f}, {1.94f, 0.10f, 0.74f}, col, tIdx, rotY);
+            // Bench backrest
+            appendRotatedBox(verts, pos, {0.0f, 0.40f, -0.30f}, {1.94f, 0.48f, 0.06f}, col, tIdx, rotY);
+            // Armrests
+            appendRotatedBox(verts, pos, {-0.90f, 0.16f, 0.02f}, {0.08f, 0.34f, 0.64f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.90f, 0.16f, 0.02f}, {0.08f, 0.34f, 0.64f}, col, tIdx, rotY);
+            return;
+        }
+        case WoodPieceVariant::Table: {
+            // 4 corner legs
+            appendRotatedBox(verts, pos, {-0.62f, -0.08f, -0.62f}, {0.14f, 0.84f, 0.14f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.62f, -0.08f, -0.62f}, {0.14f, 0.84f, 0.14f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, {-0.62f, -0.08f,  0.62f}, {0.14f, 0.84f, 0.14f}, col, tIdx, rotY);
+            appendRotatedBox(verts, pos, { 0.62f, -0.08f,  0.62f}, {0.14f, 0.84f, 0.14f}, col, tIdx, rotY);
+            // Apron support frame
+            appendRotatedBox(verts, pos, {0.0f, 0.30f, 0.0f}, {1.32f, 0.08f, 1.32f}, col, tIdx, rotY);
+            // Table top
+            appendRotatedBox(verts, pos, {0.0f, 0.40f, 0.0f}, {1.60f, 0.12f, 1.60f}, col, tIdx, rotY);
+            return;
+        }
+        default:
+            break;
+        }
+    }
+
+    // Default: single box structure
+    appendRotatedBox(verts, pos, {0.0f, 0.0f, 0.0f}, def.size, col, tIdx, rotY);
+}
+
+void BuildingManager::rebuildStructureMesh() {
+    std::vector<VoxelVertex> verts;
+    verts.reserve(structures.size() * 72);
+
+    for (const auto& s : structures) {
+        Vec4 col = {1.0f, 1.0f, 1.0f, 1.0f};
+        if (!s.isCompleted) {
+            // Scaffold blueprint look: bright translucent amber
+            col = {1.2f, 0.9f, 0.3f, 0.75f};
+        }
+
+        appendStructureGeometry(verts, s.type, s.position, s.rotationY, col);
     }
 
     structureVertexCount = static_cast<uint32_t>(verts.size());
@@ -305,11 +458,10 @@ void BuildingManager::render(GLPipeline* pipeline, const Mat4& viewProj, const V
 
     // 2. Render holographic ghost preview if in build mode
     if (isBuilding) {
-        const auto& def = StructureRegistry::get(selectedType);
-
         std::vector<VoxelVertex> ghostVerts;
         Vec4 holoColor = ghostValid ? Vec4(0.2f, 0.65f, 1.0f, 0.6f) : Vec4(1.0f, 0.2f, 0.25f, 0.6f);
-        appendBox(ghostVerts, ghostPosition, def.size, holoColor);
+        // Note: rotY is 0 here because the model matrix below applies rotationY(previewRotation)
+        appendStructureGeometry(ghostVerts, selectedType, ghostPosition, 0.0f, holoColor, 370.0f);
 
         ghostVertexCount = static_cast<uint32_t>(ghostVerts.size());
         if (ghostVertexCount > 0) {

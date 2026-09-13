@@ -167,12 +167,22 @@ void CraftingRegistry::init() {
     // SHAPELESS RECIPES (Planks, Torches, Bread, etc.)
     // ====================================================
     // 1 Wood Log -> 4 Wood Planks
-    uint16_t logTypes[]   = { 71, 77, 83, 89, 95 };
-    uint16_t plankTypes[] = { 72, 78, 84, 90, 96 };
-    for (int i = 0; i < 5; ++i) {
+    // 1 Wood Log -> 4 Wood Planks (All 16 Wood Species)
+    const char* speciesNames[16] = {
+        "Oak", "Birch", "Spruce", "Pine", "Jungle", "Acacia", "Dark Oak", "Mangrove",
+        "Cherry", "Maple", "Willow", "Fungal", "Petrified", "Bamboo", "Palm", "Astral"
+    };
+    uint16_t logTypes[16];
+    uint16_t plankTypes[16];
+    for (int i = 0; i < 16; ++i) {
+        logTypes[i] = static_cast<uint16_t>(71 + i * 3);
+        plankTypes[i] = static_cast<uint16_t>(72 + i * 3);
+    }
+
+    for (int i = 0; i < 16; ++i) {
         GridRecipe gr;
-        gr.id = 100 + i;
-        gr.name = "Planks";
+        gr.id = 1000 + i;
+        gr.name = std::string(speciesNames[i]) + " Planks";
         gr.isShapeless = true;
         gr.shapelessIngredients = { logTypes[i] };
         gr.result = { plankTypes[i], 4, 64 };
@@ -225,11 +235,11 @@ void CraftingRegistry::init() {
     // ====================================================
     // 2x2 SHAPED RECIPES (Sticks, Crafting Table, Bricks)
     // ====================================================
-    // 2 Planks vertical -> 4 Wooden Sticks
-    for (int i = 0; i < 5; ++i) {
+    // 2 Planks vertical -> 4 Wooden Sticks (All 16 Wood Species)
+    for (int i = 0; i < 16; ++i) {
         GridRecipe gr;
-        gr.id = 200 + i;
-        gr.name = "Wooden Sticks";
+        gr.id = 2000 + i;
+        gr.name = std::string(speciesNames[i]) + " Wooden Sticks";
         gr.patternW = 1;
         gr.patternH = 2;
         gr.pattern = { plankTypes[i], plankTypes[i] };
@@ -237,11 +247,11 @@ void CraftingRegistry::init() {
         registerGridRecipe(gr);
     }
 
-    // 4 Planks 2x2 -> 1 Crafting Table (331)
-    for (int i = 0; i < 5; ++i) {
+    // 4 Planks 2x2 -> 1 Crafting Table (331) (All 16 Wood Species)
+    for (int i = 0; i < 16; ++i) {
         GridRecipe gr;
-        gr.id = 210 + i;
-        gr.name = "Crafting Table";
+        gr.id = 2100 + i;
+        gr.name = std::string(speciesNames[i]) + " Crafting Table";
         gr.patternW = 2;
         gr.patternH = 2;
         gr.pattern = { plankTypes[i], plankTypes[i],

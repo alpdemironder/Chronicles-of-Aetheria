@@ -14,6 +14,8 @@ uniform float uFogStart;
 uniform float uFogEnd;
 uniform int uEnableFog;
 uniform vec3 uCamPos;
+uniform vec3 uSunDir;
+uniform float uTime;
 
 layout(location = 0) out vec4 finalColor;
 layout(location = 1) out vec4 finalNormal;
@@ -49,6 +51,29 @@ void main() {
         N = -N;
     }
 
+    // Camera view vector
+    vec3 V = normalize(uCamPos - fragWorldPos);
+
+    // Dynamic Atmospheric Lighting Vectors & Solar Color
+    vec3 sunDir = normalize(uSunDir);
+    float sunElev = clamp(sunDir.y * 1.5 + 0.1, 0.0, 1.0);
+    float sunsetFactor = clamp(1.0 - abs(sunDir.y) * 3.5, 0.0, 1.0);
+    float nightFactor = clamp(-sunDir.y * 2.0, 0.0, 1.0);
+
+    // Warm golden amber at sunrise/sunset vs radiant noon
+    vec3 noonSunColor = vec3(1.0, 0.97, 0.91);
+    vec3 sunsetSunColor = vec3(1.0, 0.58, 0.24);
+    vec3 sunColor = mix(noonSunColor, sunsetSunColor, sunsetFactor);
+
+    // Sky ambient color
+    vec3 dayAmbient = vec3(0.58, 0.70, 0.88);
+    vec3 sunsetAmbient = vec3(0.52, 0.35, 0.48);
+    vec3 nightAmbient = vec3(0.08, 0.12, 0.22);
+    vec3 ambientColor = mix(mix(dayAmbient, sunsetAmbient, sunsetFactor), nightAmbient, nightFactor);
+
+    // Modulate base surface lighting by dynamic celestial colors
+    vec3 atmosphericLight = mix(ambientColor, sunColor, clamp(fragLight, 0.0, 1.0));
+
     // Check if surface is a Creature / Mob (Layers 390 to 399)
     bool isMob = (fragTexIndex >= 389.5 && fragTexIndex <= 405.0);
 
@@ -57,16 +82,13 @@ void main() {
         // =====================================================================
         // SMOOTH & EDGY MOB SHADING (No blocky pixel bevels!)
         // =====================================================================
-        vec3 V = normalize(uCamPos - fragWorldPos);
-
         // Dynamic Fresnel Rim Light (accentuates sharp contours and silhouette)
         float NdotV = max(dot(N, V), 0.0);
         float rimFactor = pow(1.0 - NdotV, 2.6);
         vec3 rimColor = mix(texCol.rgb, vec3(0.2, 0.85, 1.0), 0.35) * rimFactor * 0.75;
 
         // Blinn-Phong Specular Highlight (for sleek chitin, armor, and fangs)
-        vec3 L = normalize(vec3(0.5, 0.9, 0.3));
-        vec3 H = normalize(L + V);
+        vec3 H = normalize(sunDir + V);
         float NdotH = max(dot(N, H), 0.0);
         float spec = pow(NdotH, 28.0) * 0.45;
 
@@ -74,7 +96,7 @@ void main() {
         bool isEmissive = (fragTexIndex >= 394.5 && fragTexIndex <= 396.5) ||
                           (fragColor.r > 1.3 || fragColor.g > 1.3 || fragColor.b > 1.3);
 
-        vec3 litMob = texCol.rgb * fragColor.rgb * (isEmissive ? 1.4 : fragLight);
+        vec3 litMob = texCol.rgb * fragColor.rgb * (isEmissive ? 1.4 : fragLight) * (isEmissive ? vec3(1.0) : atmosphericLight);
         surfaceColor = litMob + rimColor + vec3(spec);
     } else {
         // 2. Authentic block shading (with self-illuminating Molten Lava)
@@ -82,14 +104,59 @@ void main() {
         if (isLava) {
             surfaceColor = texCol.rgb * 1.35;
         } else {
-            surfaceColor = texCol.rgb * fragColor.rgb * fragLight;
+            surfaceColor = texCol.rgb * fragColor.rgb * atmosphericLight;
+
+            // PBR Specular & Fresnel on Reflective Blocks
+            bool isWater = (abs(fragTexIndex - 17.0) < 0.2);
+            bool isIce = (fragTexIndex >= 17.5 && fragTexIndex <= 20.5);
+            bool isGlass = (abs(fragTexIndex - 342.0) < 0.2 || abs(fragTexIndex - 343.0) < 0.2);
+            bool isCrystal = (fragTexIndex >= 161.0 && fragTexIndex <= 205.5);
+
+            if (isWater) {
+                // Animated micro-wave surface normal perturbation
+                vec3 waveN = N;
+                float w1 = sin(fragWorldPos.x * 4.0 + uTime * 3.0 + fragWorldPos.z * 2.0) * 0.08;
+                float w2 = cos(fragWorldPos.z * 4.0 + uTime * 2.5 - fragWorldPos.x * 2.0) * 0.08;
+                waveN.x += w1;
+                waveN.z += w2;
+                waveN = normalize(waveN);
+
+                vec3 waveH = normalize(sunDir + V);
+                float waveNdotH = max(dot(waveN, waveH), 0.0);
+                float waterSpec = pow(waveNdotH, 64.0) * 0.95 * sunElev;
+                float fresnel = pow(1.0 - max(dot(waveN, V), 0.0), 3.5);
+
+                surfaceColor = mix(surfaceColor, ambientColor * 1.4, fresnel * 0.45) + sunColor * waterSpec;
+            } else if (isIce || isGlass) {
+                vec3 H = normalize(sunDir + V);
+                float NdotH = max(dot(N, H), 0.0);
+                float spec = pow(NdotH, 48.0) * 0.65 * sunElev;
+                float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+                surfaceColor = mix(surfaceColor, ambientColor * 1.25, fresnel * 0.35) + sunColor * spec;
+            } else if (isCrystal) {
+                vec3 H = normalize(sunDir + V);
+                float NdotH = max(dot(N, H), 0.0);
+                float spec = pow(NdotH, 32.0) * 0.85 * sunElev;
+                surfaceColor += sunColor * spec;
+            }
+
+            // Subsurface Foliage Scattering (Backlit Leaves Translucency)
+            bool isLeaves = (fragTexIndex >= 72.5 && fragTexIndex <= 119.5 && ((int(fragTexIndex + 0.1) % 3) == 1)) ||
+                            (fragTexIndex >= 365.5 && fragTexIndex <= 369.5);
+            if (isLeaves) {
+                float sunBacklight = max(dot(-V, sunDir), 0.0);
+                float sss = pow(sunBacklight, 3.0) * 0.45 * sunElev;
+                surfaceColor += vec3(0.40, 0.88, 0.22) * sss * texCol.rgb;
+            }
         }
     }
 
-    // 4. Atmospheric Distance Fog
+    // 4. Atmospheric Distance Fog with Mie Solar Forward-Scattering Halo
     if (uEnableFog != 0) {
         float fogFactor = clamp((fragDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
-        finalColor = vec4(mix(surfaceColor, uFogColor.rgb, fogFactor), texCol.a);
+        float sunGaze = max(dot(-V, sunDir), 0.0);
+        vec3 atmosphericFog = mix(uFogColor.rgb, sunColor * 1.30, pow(sunGaze, 6.0) * 0.48 * (1.0 - nightFactor));
+        finalColor = vec4(mix(surfaceColor, atmosphericFog, fogFactor), texCol.a);
     } else {
         finalColor = vec4(surfaceColor, texCol.a);
     }

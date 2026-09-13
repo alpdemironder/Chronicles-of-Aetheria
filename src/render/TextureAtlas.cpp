@@ -422,6 +422,365 @@ static void fillMinecraftPlanks(uint8_t* out, const Vec4& mainCol, const Vec4& s
     }
 }
 
+// =============================================================================
+// MINECRAFT STONE BRICKS SUITE (IDs 241 to 244)
+// =============================================================================
+static void fillMinecraftStoneBricks(uint8_t* out, int variant, int seed = 241) {
+    // 1. Generate base 2x2 running bond ashlar stone bricks
+    for (int y = 0; y < 16; ++y) {
+        int row = y / 8; // Row 0 (0..7), Row 1 (8..15)
+        bool isHorizMortar = (y == 7 || y == 15);
+        bool isHorizBevelTop = (y == 0 || y == 8);
+        bool isHorizBevelBot = (y == 6 || y == 14);
+
+        for (int x = 0; x < 16; ++x) {
+            bool isVertMortar = false;
+            bool isVertBevelLeft = false;
+            bool isVertBevelRight = false;
+
+            if (row == 0) {
+                isVertMortar = (x == 7 || x == 15);
+                isVertBevelLeft = (x == 0 || x == 8);
+                isVertBevelRight = (x == 6 || x == 14);
+            } else {
+                // Staggered by 4 pixels (running bond)
+                isVertMortar = (x == 3 || x == 11);
+                isVertBevelLeft = (x == 4 || x == 12 || x == 0);
+                isVertBevelRight = (x == 2 || x == 10 || x == 15);
+            }
+
+            bool isMortar = isHorizMortar || isVertMortar;
+
+            // Cloudy stone base
+            float smooth = fbmWrap(x * 0.22f, y * 0.22f, seed + row * 17, 2);
+            float grit = pixelHash(x, y, seed) * 0.08f;
+            float val = smooth * 0.85f + grit;
+
+            uint8_t g;
+            if (isMortar) {
+                g = 52; // Deep dark mortar groove
+            } else if (isHorizBevelTop || isVertBevelLeft) {
+                // Top/Left sunlit bevel highlight
+                g = clampU8(148 + val * 18.0f);
+            } else if (isHorizBevelBot || isVertBevelRight) {
+                // Bottom/Right shadow bevel
+                g = clampU8(96 + val * 16.0f);
+            } else {
+                // Main brick face
+                if (val > 0.35f) g = 138;
+                else if (val > 0.0f) g = 124;
+                else if (val > -0.35f) g = 112;
+                else g = 100;
+            }
+
+            setPix(out, x, y, g, g, g);
+        }
+    }
+
+    // 2. Variants
+    if (variant == 1) { // Mossy Stone Bricks
+        // Creeping lush green moss tendrils across mortar and bricks
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                float mn = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 242);
+                bool isMossPatch = (mn > 0.15f && (y >= 4 && y <= 11 && x >= 2 && x <= 9)) ||
+                                   (mn > 0.25f && (y >= 10 && x >= 8)) ||
+                                   (mn > 0.05f && (y == 7 && x >= 3 && x <= 12));
+                if (isMossPatch) {
+                    if (mn > 0.35f) setPix(out, x, y, 122, 185, 48);      // Vivid lime moss
+                    else if (mn > 0.20f) setPix(out, x, y, 84, 142, 38);  // Mid green
+                    else setPix(out, x, y, 52, 95, 26);                   // Deep dark moss
+                }
+            }
+        }
+    } else if (variant == 2) { // Cracked Stone Bricks
+        // Branching fracture cracks
+        auto isCrack = [](int x, int y) -> int {
+            // Main diagonal fracture
+            if ((x == 4 && y == 0) || (x == 5 && (y >= 1 && y <= 2)) || (x == 6 && (y >= 3 && y <= 4)) ||
+                (x == 7 && (y >= 5 && y <= 7)) || (x == 6 && (y >= 8 && y <= 9)) ||
+                (x == 5 && (y >= 10 && y <= 12)) || (x == 6 && (y >= 13 && y <= 15))) return 1;
+            // Branch
+            if ((y == 5 && x == 8) || (y == 6 && (x >= 9 && x <= 10)) || (y == 7 && (x >= 11 && x <= 13))) return 1;
+            // Highlight pixel adjacent to crack
+            if ((x == 6 && y == 1) || (x == 7 && y == 3) || (x == 7 && y == 9) || (x == 6 && y == 11)) return 2;
+            return 0;
+        };
+
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                int c = isCrack(x, y);
+                if (c == 1) setPix(out, x, y, 35, 35, 38); // Void fissure shadow
+                else if (c == 2) setPix(out, x, y, 168, 168, 172); // Chipped stone highlight
+            }
+        }
+    } else if (variant == 3) { // Chiseled Crypt Stone
+        // Concentric square relief framing an inner raised boss
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                bool isBorder = (x == 0 || x == 15 || y == 0 || y == 15);
+                bool isGroove = (x == 2 || x == 13 || y == 2 || y == 13);
+                bool isInnerBorder = (x == 3 || x == 12 || y == 3 || y == 12);
+                bool isCenterBoss = (x >= 6 && x <= 9 && y >= 6 && y <= 9);
+                bool isCenterCore = (x >= 7 && x <= 8 && y >= 7 && y <= 8);
+
+                if (isBorder) setPix(out, x, y, 145, 145, 150);
+                else if (isGroove) setPix(out, x, y, 42, 42, 45); // Recessed shadow groove
+                else if (isInnerBorder) setPix(out, x, y, 135, 135, 140);
+                else if (isCenterCore) setPix(out, x, y, 165, 165, 172); // Raised boss medallion
+                else if (isCenterBoss) setPix(out, x, y, 115, 115, 120);
+                else setPix(out, x, y, 100, 100, 105);
+            }
+        }
+    }
+}
+
+// =============================================================================
+// MINECRAFT GLOWSTONE & SEA LANTERN LUMINARIES
+// =============================================================================
+static void fillMinecraftGlowstone(uint8_t* out) {
+    // Golden amber crystalline clusters with incandescent core
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            float n1 = smoothNoiseWrap(x * 0.45f, y * 0.45f, 16.0f, 344);
+            float n2 = smoothNoiseWrap(x * 0.9f, y * 0.9f, 16.0f, 345);
+            float val = n1 * 0.65f + n2 * 0.35f;
+
+            bool isSeam = (val < -0.35f) || (x == 4 && y >= 2 && y <= 7) || (x == 11 && y >= 8 && y <= 13) || (y == 8 && x >= 4 && x <= 11);
+            bool isBrightCore = (val > 0.42f);
+            bool isHotSpot = (val > 0.65f) || (x == 7 && y == 5) || (x == 8 && y == 11) || (x == 12 && y == 4) || (x == 3 && y == 12);
+
+            if (isHotSpot) {
+                setPix(out, x, y, 255, 255, 195); // Incandescent white-yellow sparkle
+            } else if (isBrightCore) {
+                setPix(out, x, y, 255, 225, 75);  // Brilliant gold
+            } else if (isSeam) {
+                setPix(out, x, y, 135, 75, 18);   // Dark amber crevice
+            } else if (val > 0.05f) {
+                setPix(out, x, y, 242, 180, 42);  // Rich amber gold
+            } else {
+                setPix(out, x, y, 198, 130, 26);  // Deep golden orange
+            }
+        }
+    }
+}
+
+static void fillMinecraftSeaLantern(uint8_t* out) {
+    // Luminous aquamarine tile with concentric frame lines and cyan glints
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            bool isBorder = (x == 0 || x == 15 || y == 0 || y == 15);
+            bool isInnerFrame = (x == 2 || x == 13 || y == 2 || y == 13) ||
+                                (x == 5 || x == 10 || y == 5 || y == 10);
+            float n = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 257);
+
+            if (isBorder) {
+                setPix(out, x, y, 85, 155, 148); // Aquamarine seam
+            } else if (isInnerFrame) {
+                setPix(out, x, y, 135, 205, 195); // Subtle structural frame
+            } else {
+                // Luminous cyan-white glowing body
+                if (n > 0.35f || (x >= 7 && x <= 8 && y >= 7 && y <= 8)) {
+                    setPix(out, x, y, 235, 255, 252); // Luminous white-cyan core
+                } else if (n > 0.0f) {
+                    setPix(out, x, y, 185, 238, 232); // Soft cyan
+                } else {
+                    setPix(out, x, y, 152, 218, 210); // Pale seafoam
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// MODERN MINECRAFT SIGNATURE ORE MASKS & PIXEL ART
+// =============================================================================
+static void fillMinecraftOre(uint8_t* out, int oreType, bool isDeepslate, float baseR, float baseG, float baseB) {
+    if (isDeepslate) fillMinecraftDeepslate(out, 45);
+    else fillMinecraftStone(out, 36);
+
+    // Modern Minecraft 1.17+ Unique Shape Matrices:
+    // level: 0 = stone, 1 = dark rim / outline, 2 = body, 3 = glint / highlight, 4 = special (patina / pyrite)
+    auto getOrePixel = [oreType](int x, int y) -> int {
+        switch (oreType) {
+        case 121: { // Coal Ore: Chunky rounded spots
+            bool inSpot1 = (x >= 2 && x <= 5 && y >= 2 && y <= 5 && !(x == 2 && y == 2) && !(x == 5 && y == 5));
+            bool inSpot2 = (x >= 9 && x <= 13 && y >= 3 && y <= 7 && !(x == 9 && y == 3) && !(x == 13 && y == 7));
+            bool inSpot3 = (x >= 3 && x <= 7 && y >= 9 && y <= 13 && !(x == 3 && y == 13) && !(x == 7 && y == 9));
+            bool inSpot4 = (x >= 10 && x <= 14 && y >= 10 && y <= 14 && !(x == 10 && y == 10) && !(x == 14 && y == 14));
+            if (!inSpot1 && !inSpot2 && !inSpot3 && !inSpot4) return 0;
+            if ((x == 3 && y == 3) || (x == 11 && y == 4) || (x == 5 && y == 10) || (x == 12 && y == 11)) return 3; // Glint
+            if ((x >= 3 && x <= 4 && y >= 3 && y <= 4) || (x >= 10 && x <= 12 && y >= 4 && y <= 6) ||
+                (x >= 4 && x <= 6 && y >= 10 && y <= 12) || (x >= 11 && x <= 13 && y >= 11 && y <= 13)) return 2; // Body
+            return 1; // Rim
+        }
+        case 122: { // Copper Ore: Teardrop nuggets with oxidized turquoise patina
+            // Patina verdigris spots
+            if ((x == 3 && y == 6) || (x == 4 && y == 7) || (x == 10 && y == 8) || (x == 11 && y == 8) || (x == 13 && y == 13)) return 4;
+            // Droplet 1
+            if (x >= 3 && x <= 6 && y >= 3 && y <= 6) {
+                if (x == 4 && y == 4) return 3;
+                if (x >= 4 && x <= 5 && y >= 4 && y <= 5) return 2;
+                return 1;
+            }
+            // Droplet 2
+            if (x >= 9 && x <= 13 && y >= 9 && y <= 13 && !(x == 13 && y == 9)) {
+                if (x == 11 && y == 10) return 3;
+                if (x >= 10 && x <= 12 && y >= 10 && y <= 12) return 2;
+                return 1;
+            }
+            // Small nugget 3
+            if (x >= 10 && x <= 12 && y >= 2 && y <= 4) {
+                if (x == 11 && y == 3) return 3;
+                return 2;
+            }
+            return 0;
+        }
+        case 124: { // Iron Ore: Iconic diagonal stepped streaks
+            // Streak 1 (bottom-left to center)
+            if ((x == 2 && y == 13) || (x == 3 && (y == 12 || y == 11)) || (x == 4 && (y == 11 || y == 10)) ||
+                (x == 5 && (y == 10 || y == 9)) || (x == 6 && (y == 8 || y == 7)) || (x == 7 && (y == 7 || y == 6))) {
+                if ((x == 3 && y == 11) || (x == 5 && y == 9) || (x == 6 && y == 7)) return 3;
+                return 2;
+            }
+            if ((x == 1 && y == 13) || (x == 2 && y == 12) || (x == 4 && y == 9) || (x == 7 && y == 5) || (x == 8 && y == 6)) return 1;
+            // Streak 2 (center to top-right)
+            if ((x == 8 && y == 11) || (x == 9 && (y == 10 || y == 9)) || (x == 10 && (y == 9 || y == 8)) ||
+                (x == 11 && (y == 8 || y == 7)) || (x == 12 && (y == 6 || y == 5)) || (x == 13 && (y == 5 || y == 4))) {
+                if ((x == 9 && y == 10) || (x == 11 && y == 7) || (x == 12 && y == 5)) return 3;
+                return 2;
+            }
+            if ((x == 8 && y == 12) || (x == 10 && y == 10) || (x == 13 && y == 6) || (x == 14 && y == 4)) return 1;
+            // Cluster 3
+            if (x >= 3 && x <= 5 && y >= 3 && y <= 5) {
+                if (x == 4 && y == 4) return 3;
+                return 2;
+            }
+            return 0;
+        }
+        case 126: { // Gold Ore: Scattered sparkling nuggets across rock
+            if ((x == 4 && y == 4) || (x == 12 && y == 3) || (x == 8 && y == 8) || (x == 3 && y == 12) || (x == 12 && y == 11)) return 3;
+            if ((x >= 3 && x <= 5 && y >= 3 && y <= 5) ||
+                (x >= 11 && x <= 13 && y >= 2 && y <= 4) ||
+                (x >= 7 && x <= 9 && y >= 7 && y <= 9) ||
+                (x >= 2 && x <= 4 && y >= 11 && y <= 13) ||
+                (x >= 11 && x <= 13 && y >= 10 && y <= 12)) return 2;
+            if ((x == 2 && y == 4) || (x == 6 && y == 4) || (x == 10 && y == 3) || (x == 14 && y == 3) ||
+                (x == 6 && y == 8) || (x == 10 && y == 8) || (x == 1 && y == 12) || (x == 5 && y == 12)) return 1;
+            return 0;
+        }
+        case 128: { // Cobalt / Lapis Ore: Jagged vein with gold pyrite specks
+            // Pyrite flecks
+            if ((x == 5 && y == 9) || (x == 10 && y == 6)) return 4;
+            // Jagged vein
+            if ((x == 3 && (y == 12 || y == 11)) || (x == 4 && (y == 11 || y == 10)) ||
+                (x == 5 && (y == 10 || y == 9))  || (x == 6 && (y == 9 || y == 8)) ||
+                (x == 7 && (y == 8 || y == 7))   || (x == 8 && (y == 8 || y == 7)) ||
+                (x == 9 && (y == 7 || y == 6))   || (x == 10 && (y == 6 || y == 5)) ||
+                (x == 11 && (y == 5 || y == 4))  || (x == 12 && (y == 4 || y == 3))) {
+                if ((x == 4 && y == 10) || (x == 7 && y == 8) || (x == 9 && y == 6) || (x == 11 && y == 4)) return 3;
+                return 2;
+            }
+            if ((x == 2 && y == 12) || (x == 5 && y == 11) || (x == 8 && y == 9) || (x == 11 && y == 6) || (x == 13 && y == 3)) return 1;
+            return 0;
+        }
+        case 130: { // Redstone / Adamantite: Dense glowing crystalline clusters
+            if ((x == 4 && y == 3) || (x == 11 && y == 4) || (x == 5 && y == 10) || (x == 12 && y == 11)) return 3;
+            if ((x >= 3 && x <= 5 && y >= 3 && y <= 5 && !(x == 3 && y == 3) && !(x == 5 && y == 5)) ||
+                (x >= 10 && x <= 12 && y >= 3 && y <= 5 && !(x == 10 && y == 5) && !(x == 12 && y == 3)) ||
+                (x >= 4 && x <= 6 && y >= 9 && y <= 11 && !(x == 4 && y == 11) && !(x == 6 && y == 9)) ||
+                (x >= 11 && x <= 13 && y >= 10 && y <= 12 && !(x == 11 && y == 10) && !(x == 13 && y == 12))) return 2;
+            if ((x == 2 && y == 4) || (x == 6 && y == 4) || (x == 9 && y == 4) || (x == 13 && y == 4) ||
+                (x == 3 && y == 10) || (x == 7 && y == 10) || (x == 10 && y == 11) || (x == 14 && y == 11)) return 1;
+            return 0;
+        }
+        case 129: { // Mythril / Diamond Cyan: Radiant crystal rifts
+            if ((x == 4 && y == 4) || (x == 11 && y == 4) || (x == 6 && y == 9) || (x == 12 && y == 12)) return 3;
+            if ((x >= 3 && x <= 5 && y >= 3 && y <= 5) || (x >= 10 && x <= 12 && y >= 3 && y <= 5) ||
+                (x >= 5 && x <= 7 && y >= 8 && y <= 10) || (x >= 11 && x <= 13 && y >= 11 && y <= 13)) return 2;
+            if ((x == 2 && y == 4) || (x == 6 && y == 4) || (x == 9 && y == 4) || (x == 13 && y == 4) ||
+                (x == 4 && y == 9) || (x == 8 && y == 9) || (x == 10 && y == 12) || (x == 14 && y == 12)) return 1;
+            return 0;
+        }
+        default: { // Other ores: Classic Minecraft cluster shape
+            if ((x == 4 && y == 3) || (x == 11 && y == 5) || (x == 5 && y == 10) || (x == 12 && y == 12)) return 3;
+            if ((x >= 3 && x <= 5 && y >= 2 && y <= 4) || (x >= 10 && x <= 12 && y >= 4 && y <= 6) ||
+                (x >= 4 && x <= 6 && y >= 9 && y <= 11) || (x >= 11 && x <= 13 && y >= 11 && y <= 13)) return 2;
+            if ((x == 2 && y == 3) || (x == 6 && y == 3) || (x == 9 && y == 5) || (x == 13 && y == 5) ||
+                (x == 3 && y == 10) || (x == 7 && y == 10) || (x == 10 && y == 12) || (x == 14 && y == 12)) return 1;
+            return 0;
+        }
+        }
+    };
+
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            int lvl = getOrePixel(x, y);
+            if (lvl == 0) continue;
+
+            switch (oreType) {
+            case 121: // Coal Ore
+                if (lvl == 3) setPix(out, x, y, 76, 76, 82);
+                else if (lvl == 2) setPix(out, x, y, 44, 46, 50);
+                else setPix(out, x, y, 22, 22, 24);
+                break;
+            case 122: // Copper Ore
+                if (lvl == 4) setPix(out, x, y, 92, 198, 165); // Patina turquoise
+                else if (lvl == 3) setPix(out, x, y, 248, 155, 95);
+                else if (lvl == 2) setPix(out, x, y, 215, 115, 65);
+                else setPix(out, x, y, 165, 80, 42);
+                break;
+            case 123: // Tin Ore
+                if (lvl == 3) setPix(out, x, y, 235, 235, 242);
+                else if (lvl == 2) setPix(out, x, y, 195, 195, 205);
+                else setPix(out, x, y, 145, 145, 155);
+                break;
+            case 124: // Iron Ore
+                if (lvl == 3) setPix(out, x, y, 248, 208, 185);
+                else if (lvl == 2) setPix(out, x, y, 218, 175, 145);
+                else setPix(out, x, y, 165, 122, 98);
+                break;
+            case 125: // Silver Ore
+                if (lvl == 3) setPix(out, x, y, 255, 255, 255);
+                else if (lvl == 2) setPix(out, x, y, 230, 235, 245);
+                else setPix(out, x, y, 175, 180, 195);
+                break;
+            case 126: // Gold Ore
+                if (lvl == 3) setPix(out, x, y, 255, 252, 160);
+                else if (lvl == 2) setPix(out, x, y, 252, 220, 55);
+                else setPix(out, x, y, 195, 145, 25);
+                break;
+            case 127: // Platinum Ore
+                if (lvl == 3) setPix(out, x, y, 255, 255, 255);
+                else if (lvl == 2) setPix(out, x, y, 218, 230, 242);
+                else setPix(out, x, y, 165, 180, 198);
+                break;
+            case 128: // Cobalt / Lapis Ore
+                if (lvl == 4) setPix(out, x, y, 248, 210, 55); // Pyrite gold fleck
+                else if (lvl == 3) setPix(out, x, y, 75, 135, 255);
+                else if (lvl == 2) setPix(out, x, y, 35, 80, 215);
+                else setPix(out, x, y, 18, 45, 130);
+                break;
+            case 129: // Mythril / Diamond-Cyan Ore
+                if (lvl == 3) setPix(out, x, y, 245, 255, 255);
+                else if (lvl == 2) setPix(out, x, y, 75, 235, 245);
+                else setPix(out, x, y, 25, 135, 165);
+                break;
+            case 130: // Adamantite / Redstone Ore
+                if (lvl == 3) setPix(out, x, y, 255, 145, 165);
+                else if (lvl == 2) setPix(out, x, y, 230, 32, 48);
+                else setPix(out, x, y, 142, 16, 26);
+                break;
+            default:
+                if (lvl == 3) setPix(out, x, y, 255, 255, 255);
+                else if (lvl == 2) setPix(out, x, y, clampU8(baseR * 1.3f), clampU8(baseG * 1.3f), clampU8(baseB * 1.3f));
+                else setPix(out, x, y, clampU8(baseR * 0.75f), clampU8(baseG * 0.75f), clampU8(baseB * 0.75f));
+                break;
+            }
+        }
+    }
+}
+
 void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     const BlockDef& def = BlockRegistry::get(bId);
     float baseR = def.color.x * 255.0f;
@@ -675,27 +1034,33 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         }
         return;
     }
-    else if (bId == 23) { // Netherrack - Crimson bloody porous rock
+    else if (bId == 23) { // Netherrack - Authentic craggy dark bloodstone with porous cavities
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float nn = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 23);
-                if (nn > 0.40f) setPix(out, x, y, 155, 45, 45);
-                else if (nn > 0.05f) setPix(out, x, y, 125, 30, 30);
-                else if (nn > -0.30f) setPix(out, x, y, 98, 20, 20);
-                else if (nn > -0.65f) setPix(out, x, y, 70, 14, 14);
-                else setPix(out, x, y, 45, 8, 8);
+                float n1 = smoothNoiseWrap(x * 0.45f, y * 0.45f, 16.0f, 23);
+                float n2 = pixelHash(x, y, 23) * 0.14f;
+                float val = n1 * 0.86f + n2;
+                if (val > 0.42f)      setPix(out, x, y, 158, 52, 54); // Bright crag ridge
+                else if (val > 0.12f) setPix(out, x, y, 122, 34, 38); // Body bloodstone
+                else if (val > -0.22f)setPix(out, x, y, 92,  22, 26); // Shadow stone
+                else if (val > -0.55f)setPix(out, x, y, 64,  14, 18); // Porous cavity
+                else                  setPix(out, x, y, 42,  8,  12); // Deep ash pit
             }
         }
         return;
     }
-    else if (bId == 24) { // End Stone - Pale inverted yellow porous moon rock
+    else if (bId == 24) { // End Stone - Authentic inverted pale yellow cratered moon rock
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
-                float en = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 24);
-                if (en > 0.35f) setPix(out, x, y, 238, 240, 185);
-                else if (en > -0.05f) setPix(out, x, y, 220, 224, 168);
-                else if (en > -0.45f) setPix(out, x, y, 198, 202, 148);
-                else setPix(out, x, y, 172, 176, 126);
+                float en1 = smoothNoiseWrap(x * 0.38f, y * 0.38f, 16.0f, 24);
+                float en2 = smoothNoiseWrap(x * 0.85f, y * 0.85f, 16.0f, 124) * 0.35f;
+                float grit = pixelHash(x, y, 24) * 0.08f;
+                float val = en1 * 0.65f + en2 + grit;
+                if (val > 0.40f)      setPix(out, x, y, 242, 246, 195); // Crater rim highlight
+                else if (val > 0.08f) setPix(out, x, y, 222, 226, 172); // Main cream body
+                else if (val > -0.28f)setPix(out, x, y, 198, 202, 146); // Shadow slope
+                else if (val > -0.60f)setPix(out, x, y, 172, 176, 120); // Deep crater floor
+                else                  setPix(out, x, y, 148, 152, 98);  // Crater pit
             }
         }
         return;
@@ -858,20 +1223,46 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
         }
         return;
     }
-    else if (bId == 52 || bId == 53) { // Obsidian & Cryo-Obsidian - Fractured volcanic glass
+    else if (bId == 52 || bId == 53) { // Obsidian & Crying Obsidian - Authentic conchoidal volcanic glass
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
+                // Conchoidal fracture facets
                 float on = smoothNoiseWrap(x * 0.35f, y * 0.35f, 16.0f, 52);
-                bool isGlint = (x == y || x + y == 15 || (x * 3 + y * 7) % 13 == 0);
-                if (bId == 53) { // Cryo-Obsidian (Cyan frost)
-                    if (isGlint && on > 0.05f) setPix(out, x, y, 70, 185, 245);
-                    else if (on > -0.1f) setPix(out, x, y, 25, 75, 120);
-                    else setPix(out, x, y, 12, 28, 55);
-                } else { // Obsidian (Violet)
-                    if (isGlint && on > 0.1f) setPix(out, x, y, 92, 45, 140);
-                    else if (on > 0.0f) setPix(out, x, y, 48, 25, 75);
-                    else if (on > -0.3f) setPix(out, x, y, 25, 16, 38);
-                    else setPix(out, x, y, 16, 12, 24);
+                bool isFacetRidge = (x == y || x + y == 15 || (x * 2 + y * 5) % 9 == 0);
+                bool isGlint = ((x == 3 && y == 3) || (x == 11 && y == 4) || (x == 6 && y == 10) || (x == 12 && y == 12));
+
+                if (bId == 53) { // Cryo-Obsidian / Crying Obsidian - Ethereal weeping magenta tears
+                    // Glowing crying cracks & tear pools
+                    bool isTear = ((x == 4 || x == 5) && (y >= 2 && y <= 6)) ||
+                                  ((x == 5 || x == 6) && (y >= 7 && y <= 10)) ||
+                                  ((x == 6) && (y >= 11 && y <= 13)) ||
+                                  ((x >= 10 && x <= 12) && (y >= 8 && y <= 11)) ||
+                                  (x == 11 && y == 12);
+                    bool isTearCore = (x == 5 && (y == 4 || y == 8)) || (x == 11 && y == 9);
+
+                    if (isTearCore) {
+                        setPix(out, x, y, 255, 175, 255); // Blinding neon magenta-white core
+                    } else if (isTear) {
+                        setPix(out, x, y, 225, 45, 215);  // Electric purple crying stream
+                    } else if (isFacetRidge) {
+                        setPix(out, x, y, 78, 22, 95);    // Obsidian facet shadow
+                    } else if (on > 0.1f) {
+                        setPix(out, x, y, 42, 16, 58);
+                    } else {
+                        setPix(out, x, y, 20, 10, 30);    // Deep obsidian black
+                    }
+                } else { // Authentic Obsidian - Deep plum-black volcanic glass with sharp violet sheen
+                    if (isGlint) {
+                        setPix(out, x, y, 145, 95, 195);  // Razor-sharp specular glint
+                    } else if (isFacetRidge) {
+                        setPix(out, x, y, 82, 44, 125);   // Facet ridge highlight
+                    } else if (on > 0.20f) {
+                        setPix(out, x, y, 52, 28, 80);    // Plum-violet glass
+                    } else if (on > -0.20f) {
+                        setPix(out, x, y, 32, 18, 52);    // Mid dark volcanic glass
+                    } else {
+                        setPix(out, x, y, 16, 10, 26);    // Deep dark obsidian shadow
+                    }
                 }
             }
         }
@@ -1181,97 +1572,8 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
     // =========================================================================
     if (bId >= 121 && bId <= 140) {
         bool isDeepslate = (bId >= 136);
-        if (isDeepslate) fillMinecraftDeepslate(out, 45);
-        else fillMinecraftStone(out, 36);
-
-        auto isOrePixel = [](int x, int y) -> int {
-            if (x >= 3 && x <= 6 && y >= 2 && y <= 5 && !(x == 3 && y == 2) && !(x == 6 && y == 5)) {
-                if (x == 4 && y == 3) return 3; // Glint
-                if (x == 5 && y == 4) return 2; // Bright
-                return 1;
-            }
-            if (x >= 10 && x <= 13 && y >= 4 && y <= 7 && !(x == 10 && y == 7) && !(x == 13 && y == 4)) {
-                if (x == 11 && y == 5) return 3;
-                if (x == 12 && y == 6) return 2;
-                return 1;
-            }
-            if (x >= 4 && x <= 7 && y >= 9 && y <= 12 && !(x == 4 && y == 12)) {
-                if (x == 5 && y == 10) return 3;
-                return 1;
-            }
-            if (x >= 11 && x <= 14 && y >= 11 && y <= 14 && !(x == 14 && y == 14)) {
-                if (x == 12 && y == 12) return 3;
-                return 1;
-            }
-            return 0;
-        };
-
         int oreType = (bId >= 136) ? (bId - 136 + 121) : bId;
-
-        for (int y = 0; y < 16; ++y) {
-            for (int x = 0; x < 16; ++x) {
-                int level = isOrePixel(x, y);
-                if (level == 0) continue;
-
-                switch (oreType) {
-                case 121: // Coal Ore - Charcoal Black
-                    if (level == 3) setPix(out, x, y, 65, 65, 65);
-                    else if (level == 2) setPix(out, x, y, 42, 42, 42);
-                    else setPix(out, x, y, 22, 22, 22);
-                    break;
-                case 122: // Copper Ore - Copper orange with oxidized patina
-                    if (level == 3) setPix(out, x, y, 92, 195, 165); // Patina turquoise
-                    else if (level == 2) setPix(out, x, y, 240, 138, 75);
-                    else setPix(out, x, y, 195, 95, 45);
-                    break;
-                case 123: // Tin Ore - Pewter silver
-                    if (level == 3) setPix(out, x, y, 225, 225, 235);
-                    else if (level == 2) setPix(out, x, y, 185, 185, 195);
-                    else setPix(out, x, y, 145, 145, 155);
-                    break;
-                case 124: // Iron Ore - Peachy Tan
-                    if (level == 3) setPix(out, x, y, 235, 195, 172);
-                    else if (level == 2) setPix(out, x, y, 212, 168, 142);
-                    else setPix(out, x, y, 165, 122, 98);
-                    break;
-                case 125: // Silver Ore - Glistening silver
-                    if (level == 3) setPix(out, x, y, 255, 255, 255);
-                    else if (level == 2) setPix(out, x, y, 225, 230, 240);
-                    else setPix(out, x, y, 175, 180, 195);
-                    break;
-                case 126: // Gold Ore - Radiant Golden Yellow
-                    if (level == 3) setPix(out, x, y, 255, 248, 125);
-                    else if (level == 2) setPix(out, x, y, 252, 235, 75);
-                    else setPix(out, x, y, 218, 178, 38);
-                    break;
-                case 127: // Platinum Ore - Ice white
-                    if (level == 3) setPix(out, x, y, 255, 255, 255);
-                    else if (level == 2) setPix(out, x, y, 215, 225, 235);
-                    else setPix(out, x, y, 165, 180, 195);
-                    break;
-                case 128: // Cobalt Ore - Royal Blue
-                    if (level == 3) setPix(out, x, y, 120, 185, 255);
-                    else if (level == 2) setPix(out, x, y, 45, 95, 225);
-                    else setPix(out, x, y, 25, 55, 165);
-                    break;
-                case 129: // Mythril Ore - Luminous Cyan
-                    if (level == 3) setPix(out, x, y, 195, 255, 255);
-                    else if (level == 2) setPix(out, x, y, 55, 215, 235);
-                    else setPix(out, x, y, 25, 155, 185);
-                    break;
-                case 130: // Adamantite Ore - Ruby Crimson
-                    if (level == 3) setPix(out, x, y, 255, 125, 145);
-                    else if (level == 2) setPix(out, x, y, 225, 35, 65);
-                    else setPix(out, x, y, 155, 18, 38);
-                    break;
-                default:
-                    if (level == 3) setPix(out, x, y, 255, 255, 255);
-                    else if (level == 2) setPix(out, x, y, clampU8(baseR * 1.3f), clampU8(baseG * 1.3f), clampU8(baseB * 1.3f));
-                    else setPix(out, x, y, clampU8(baseR), clampU8(baseG), clampU8(baseB));
-                    break;
-                }
-            }
-        }
+        fillMinecraftOre(out, oreType, isDeepslate, baseR, baseG, baseB);
         return;
     }
     else if (bId >= 141 && bId <= 145) { // Stamped Mineral Blocks
@@ -1469,6 +1771,58 @@ void TextureAtlas::generateBlockTexture(uint16_t bId, uint8_t* out) {
                 setPix(out, dx, dy, clampU8(lr + 18.0f + n * 16.0f), clampU8(lg + 16.0f + n * 22.0f), clampU8(lb + 12.0f + n * 16.0f), 255);
             }
         }
+        return;
+    }
+
+    // =========================================================================
+    // 5. STONE BRICKS SUITE & ARCHITECTURE (241 to 244)
+    // =========================================================================
+    if (bId >= 241 && bId <= 244) {
+        fillMinecraftStoneBricks(out, bId - 241, bId);
+        return;
+    }
+
+    // =========================================================================
+    // 6. SPECIAL DUNGEON & TEMPLE BLOCKS (257, 259, 260)
+    // =========================================================================
+    if (bId == 257) { // Sea Lantern Tile
+        fillMinecraftSeaLantern(out);
+        return;
+    }
+    else if (bId == 259) { // Volcanic Fortress Brick (Nether Fortress Bricks)
+        for (int y = 0; y < 16; ++y) {
+            int row = y / 4;
+            for (int x = 0; x < 16; ++x) {
+                bool isMortar = (y % 4 == 3) || ((row % 2 == 0) ? (x == 7 || x == 15) : (x == 3 || x == 11));
+                float n = pixelHash(x, y, 259) * 0.12f;
+                if (isMortar) setPix(out, x, y, 32, 10, 14);
+                else setPix(out, x, y, clampU8(78 + n * 16.0f), clampU8(22 + n * 8.0f), clampU8(28 + n * 8.0f));
+            }
+        }
+        return;
+    }
+    else if (bId == 260) { // Magma Tile - Dark cooled crust with radiant lava fissures
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                float n = smoothNoiseWrap(x * 0.4f, y * 0.4f, 16.0f, 260);
+                bool isVein = (x == y || x + y == 14 || (x * 3 + y * 7) % 11 == 0);
+                if (isVein && n > 0.0f) {
+                    setPix(out, x, y, 255, 145, 25); // Glowing hot magma crack
+                } else if (isVein) {
+                    setPix(out, x, y, 215, 55, 15);  // Deep crimson vein
+                } else {
+                    setPix(out, x, y, 48, 20, 16);   // Dark basalt crust
+                }
+            }
+        }
+        return;
+    }
+
+    // =========================================================================
+    // 7. GLOWSTONE LAMP (344)
+    // =========================================================================
+    if (bId == 344) {
+        fillMinecraftGlowstone(out);
         return;
     }
 

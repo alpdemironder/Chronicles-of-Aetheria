@@ -27,7 +27,12 @@ vec3 ACESFilm(vec3 x) {
 }
 
 void main() {
-    vec3 color = texture(colortex0, texCoord).rgb;
+    // Subtle optical lens chromatic aberration towards screen periphery
+    vec2 caOffset = (texCoord - 0.5) * 0.0014;
+    float rChannel = texture(colortex0, clamp(texCoord + caOffset, 0.001, 0.999)).r;
+    float gChannel = texture(colortex0, texCoord).g;
+    float bChannel = texture(colortex0, clamp(texCoord - caOffset, 0.001, 0.999)).b;
+    vec3 color = vec3(rChannel, gChannel, bChannel);
 
     // =========================================================================
     // 0. CINEMATIC CAMERA & VELOCITY MOTION BLUR

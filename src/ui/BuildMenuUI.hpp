@@ -26,6 +26,7 @@ private:
     bool isOpen = false;
     int currentCategory = 0;
     int selectedIndex = 0;
+    int scrollOffset = 0;
 };
 
 } // namespace Aetheria
