@@ -1,0 +1,5 @@
+bin/*.exe
+bin/*.pdb
+*.log
+*.zip
+.vscode/
