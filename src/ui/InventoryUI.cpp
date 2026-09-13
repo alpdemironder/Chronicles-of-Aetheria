@@ -405,29 +405,36 @@ void InventoryUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
     ui->drawHexBadge(panelX + 22.0f, panelY + 24.0f, 8.0f, {0.2f, 0.95f, 0.35f, 1.0f}, {1.0f, 1.0f, 1.0f, 0.9f});
     ui->drawText("SCA.B OS // v2.4", panelX + 36.0f, panelY + 18.0f, 1.35f, {0.2f, 0.95f, 0.35f, 1.0f});
 
-    // 4 Grounded Top Tabs
-    float tabX = panelX + 180.0f;
+    // Grounded Top Tabs
+    float tabX = panelX + 175.0f;
     float tabY = panelY + 9.0f;
-    float tabW = 150.0f;
+    float tabW = (currentChestSlots != nullptr) ? 122.0f : 150.0f;
+    float tabGap = (currentChestSlots != nullptr) ? 6.0f : 8.0f;
     float tabH = 30.0f;
 
-    if (drawGroundedButton(ui, tabX, tabY, tabW, tabH, "[1] BACKPACK", mode == InventoryUIMode::Backpack, mouseX, mouseY, mouseClicked)) {
+    if (drawGroundedButton(ui, tabX + 0 * (tabW + tabGap), tabY, tabW, tabH, "[1] BACKPACK", mode == InventoryUIMode::Backpack, mouseX, mouseY, mouseClicked)) {
         returnGridItemsToPlayer(player);
         mode = InventoryUIMode::Backpack;
         updateCraftingResult();
     }
-    if (drawGroundedButton(ui, tabX + 158.0f, tabY, tabW, tabH, "[2] WORKBENCH", mode == InventoryUIMode::Crafting, mouseX, mouseY, mouseClicked)) {
+    if (drawGroundedButton(ui, tabX + 1 * (tabW + tabGap), tabY, tabW, tabH, "[2] WORKBENCH", mode == InventoryUIMode::Crafting, mouseX, mouseY, mouseClicked)) {
         returnGridItemsToPlayer(player);
         mode = InventoryUIMode::Crafting;
         updateCraftingResult();
     }
-    if (drawGroundedButton(ui, tabX + 316.0f, tabY, tabW, tabH, "[3] SMELTER", mode == InventoryUIMode::Furnace, mouseX, mouseY, mouseClicked)) {
+    if (drawGroundedButton(ui, tabX + 2 * (tabW + tabGap), tabY, tabW, tabH, "[3] SMELTER", mode == InventoryUIMode::Furnace, mouseX, mouseY, mouseClicked)) {
         returnGridItemsToPlayer(player);
         mode = InventoryUIMode::Furnace;
     }
-    if (drawGroundedButton(ui, tabX + 474.0f, tabY, tabW, tabH, "[4] VITALS", mode == InventoryUIMode::Vitals, mouseX, mouseY, mouseClicked)) {
+    if (drawGroundedButton(ui, tabX + 3 * (tabW + tabGap), tabY, tabW, tabH, "[4] VITALS", mode == InventoryUIMode::Vitals, mouseX, mouseY, mouseClicked)) {
         returnGridItemsToPlayer(player);
         mode = InventoryUIMode::Vitals;
+    }
+    if (currentChestSlots != nullptr) {
+        if (drawGroundedButton(ui, tabX + 4 * (tabW + tabGap), tabY, tabW, tabH, "[5] CHEST", mode == InventoryUIMode::Chest, mouseX, mouseY, mouseClicked, {0.95f, 0.70f, 0.20f, 1.0f})) {
+            returnGridItemsToPlayer(player);
+            mode = InventoryUIMode::Chest;
+        }
     }
 
     // Close button on far right
@@ -1188,6 +1195,300 @@ void InventoryUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
         ui->drawText("- Pal Sphere Matrix: Ready for creature taming", p2X + 16.0f, cY, 1.1f, {0.85f, 0.9f, 0.95f, 0.9f});
         cY += 20.0f;
         ui->drawText("- Habitat Adaptation: Safe ambient temperature", p2X + 16.0f, cY, 1.1f, {0.85f, 0.9f, 0.95f, 0.9f});
+    }
+    // =========================================================================
+    // TAB 4: CHEST CONTAINER (27 SLOTS + PLAYER INVENTORY + TRANSFER CONTROLS)
+    // =========================================================================
+    else if (mode == InventoryUIMode::Chest && currentChestSlots != nullptr) {
+        float chStartX = panelX + 32.0f;
+        float chStartY = panelY + 48.0f;
+        float chSlotSz = 34.0f;
+        float chGap = 3.0f;
+
+        // Chest Header
+        ui->drawText("WOODEN STORAGE CHEST // 27 CONTAINER SLOTS", chStartX, chStartY, 1.30f, {0.95f, 0.72f, 0.25f, 1.0f});
+
+        // Quick Action Buttons
+        float btnY = chStartY - 2.0f;
+        float btnW = 82.0f;
+        float btnH = 20.0f;
+
+        // [TAKE ALL] Button
+        if (drawGroundedButton(ui, chStartX + 320.0f, btnY, btnW, btnH, "HEPSINI AL", false, mouseX, mouseY, mouseClicked, {0.2f, 0.9f, 0.4f, 1.0f})) {
+            for (auto& cs : *currentChestSlots) {
+                if (!cs.isEmpty()) {
+                    uint32_t rem = inv.addItem(cs.id, cs.count);
+                    if (rem == 0) cs.clear();
+                    else cs.count = rem;
+                }
+            }
+            if (audio) audio->playSound(SoundID::ItemPickup, 1.1f, 1.0f);
+        }
+
+        // [DEPOSIT ALL] Button
+        if (drawGroundedButton(ui, chStartX + 406.0f, btnY, btnW, btnH, "HEPSINI KOY", false, mouseX, mouseY, mouseClicked, {0.95f, 0.6f, 0.2f, 1.0f})) {
+            for (int i = 9; i < Inventory::TOTAL_SLOTS; ++i) {
+                if (!inv.isSlotUnlocked(i)) continue;
+                ItemStack& ps = inv.getSlot(i);
+                if (ps.isEmpty()) continue;
+
+                for (auto& cs : *currentChestSlots) {
+                    if (!cs.isEmpty() && cs.id == ps.id && cs.count < cs.maxStack) {
+                        uint32_t space = cs.maxStack - cs.count;
+                        uint32_t toAdd = std::min(ps.count, space);
+                        cs.count += toAdd;
+                        ps.count -= toAdd;
+                        if (ps.count == 0) { ps.clear(); break; }
+                    }
+                }
+                if (!ps.isEmpty()) {
+                    for (auto& cs : *currentChestSlots) {
+                        if (cs.isEmpty()) {
+                            cs = ps;
+                            ps.clear();
+                            break;
+                        }
+                    }
+                }
+            }
+            if (audio) audio->playSound(SoundID::ItemPickup, 1.1f, 1.0f);
+        }
+
+        // [QUICK STACK] Button
+        if (drawGroundedButton(ui, chStartX + 492.0f, btnY, btnW, btnH, "HIZLI YIG", false, mouseX, mouseY, mouseClicked, {0.3f, 0.8f, 1.0f, 1.0f})) {
+            for (int i = 9; i < Inventory::TOTAL_SLOTS; ++i) {
+                if (!inv.isSlotUnlocked(i)) continue;
+                ItemStack& ps = inv.getSlot(i);
+                if (ps.isEmpty()) continue;
+
+                bool chestHasItem = false;
+                for (const auto& cs : *currentChestSlots) {
+                    if (cs.id == ps.id) { chestHasItem = true; break; }
+                }
+                if (chestHasItem) {
+                    for (auto& cs : *currentChestSlots) {
+                        if (cs.id == ps.id && cs.count < cs.maxStack) {
+                            uint32_t space = cs.maxStack - cs.count;
+                            uint32_t toAdd = std::min(ps.count, space);
+                            cs.count += toAdd;
+                            ps.count -= toAdd;
+                            if (ps.count == 0) { ps.clear(); break; }
+                        }
+                    }
+                }
+            }
+            if (audio) audio->playSound(SoundID::ItemPickup, 1.2f, 1.1f);
+        }
+
+        // Render 27 Chest Slots (3 Rows x 9 Columns)
+        float chSlotsY = chStartY + 20.0f;
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 9; ++c) {
+                int cIdx = r * 9 + c;
+                if (cIdx >= static_cast<int>(currentChestSlots->size())) break;
+
+                float sx = chStartX + c * (chSlotSz + chGap);
+                float sy = chSlotsY + r * (chSlotSz + chGap);
+
+                ItemStack& slot = (*currentChestSlots)[cIdx];
+                bool hov = (mouseX >= sx && mouseX <= sx + chSlotSz && mouseY >= sy && mouseY <= sy + chSlotSz);
+
+                if (hov) {
+                    hoveredStack = slot.isEmpty() ? nullptr : &slot;
+
+                    if (mouseClicked || rightClicked) {
+                        if (shiftDown) {
+                            // Quick-transfer: Chest -> Player Inventory
+                            if (!slot.isEmpty()) {
+                                uint32_t rem = inv.addItem(slot.id, slot.count);
+                                if (rem == 0) slot.clear();
+                                else slot.count = rem;
+                                if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                            }
+                        } else if (rightClicked) {
+                            // Right click: take half or place 1
+                            if (cursor.isEmpty()) {
+                                if (!slot.isEmpty()) {
+                                    uint32_t half = (slot.count + 1) / 2;
+                                    cursor = { slot.id, half, slot.maxStack };
+                                    slot.count -= half;
+                                    if (slot.count == 0) slot.clear();
+                                    if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                                }
+                            } else {
+                                if (slot.isEmpty()) {
+                                    slot = { cursor.id, 1, cursor.maxStack };
+                                    cursor.count--;
+                                    if (cursor.count == 0) cursor.clear();
+                                    if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                                } else if (slot.id == cursor.id && slot.count < slot.maxStack) {
+                                    slot.count++;
+                                    cursor.count--;
+                                    if (cursor.count == 0) cursor.clear();
+                                    if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                                }
+                            }
+                        } else {
+                            // Left click: pickup / drop / swap
+                            if (cursor.isEmpty()) {
+                                cursor = slot;
+                                slot.clear();
+                                if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                            } else {
+                                if (slot.isEmpty()) {
+                                    slot = cursor;
+                                    cursor.clear();
+                                    if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                                } else if (slot.id == cursor.id) {
+                                    uint32_t space = slot.maxStack - slot.count;
+                                    uint32_t toAdd = std::min(cursor.count, space);
+                                    slot.count += toAdd;
+                                    cursor.count -= toAdd;
+                                    if (cursor.count == 0) cursor.clear();
+                                    if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                                } else {
+                                    std::swap(slot, cursor);
+                                    if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                renderSlotCard(ui, sx, sy, chSlotSz, slot, hov, false, "", {0.95f, 0.72f, 0.25f, 0.85f});
+            }
+        }
+
+        // Horizontal divider between Chest and Player Storage
+        float midDivY = chSlotsY + 3 * (chSlotSz + chGap) + 6.0f;
+        ui->drawLine(chStartX, midDivY, chStartX + 9 * (chSlotSz + chGap), midDivY, 1.5f, {0.18f, 0.28f, 0.38f, 0.7f});
+
+        // Player Backpack Header
+        float bpStartY = midDivY + 6.0f;
+        uint32_t unlockedTotal = inv.getUnlockedSlotCount();
+        uint32_t bpUnlocked = (unlockedTotal > 9) ? (unlockedTotal - 9) : 0;
+        ui->drawText("PLAYER BACKPACK (" + std::to_string(bpUnlocked) + "/45 SLOTS)", chStartX, bpStartY, 1.20f, {0.90f, 0.92f, 0.95f, 1.0f});
+
+        // Player Backpack Slots (5 Rows x 9 Cols: 9..53)
+        float bpSlotsY = bpStartY + 16.0f;
+        for (int r = 0; r < 5; ++r) {
+            for (int c = 0; c < 9; ++c) {
+                int slotIdx = 9 + r * 9 + c;
+                float sx = chStartX + c * (chSlotSz + chGap);
+                float sy = bpSlotsY + r * (chSlotSz + chGap);
+
+                bool unlocked = inv.isSlotUnlocked(slotIdx);
+                bool hov = (mouseX >= sx && mouseX <= sx + chSlotSz && mouseY >= sy && mouseY <= sy + chSlotSz);
+
+                if (hov) {
+                    hoveredSlotIndex = slotIdx;
+                    hoveredStack = unlocked ? &inv.getSlot(slotIdx) : nullptr;
+
+                    if (unlocked && (mouseClicked || rightClicked)) {
+                        selectedSlotIndex = slotIdx;
+
+                        if (shiftDown) {
+                            // Quick-transfer: Player -> Chest!
+                            ItemStack& ps = inv.getSlot(slotIdx);
+                            if (!ps.isEmpty()) {
+                                for (auto& cs : *currentChestSlots) {
+                                    if (!cs.isEmpty() && cs.id == ps.id && cs.count < cs.maxStack) {
+                                        uint32_t space = cs.maxStack - cs.count;
+                                        uint32_t toAdd = std::min(ps.count, space);
+                                        cs.count += toAdd;
+                                        ps.count -= toAdd;
+                                        if (ps.count == 0) { ps.clear(); break; }
+                                    }
+                                }
+                                if (!ps.isEmpty()) {
+                                    for (auto& cs : *currentChestSlots) {
+                                        if (cs.isEmpty()) {
+                                            cs = ps;
+                                            ps.clear();
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                            }
+                        } else {
+                            inv.handleSlotClick(slotIdx, rightClicked, shiftDown);
+                            if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                        }
+                    }
+                }
+
+                renderSlotCard(ui, sx, sy, chSlotSz, inv.getSlot(slotIdx), hov, selectedSlotIndex == slotIdx,
+                               "", {0.25f, 0.35f, 0.45f, 0.8f}, !unlocked, inv.getRequiredLevelForSlot(slotIdx));
+            }
+        }
+
+        // Player Hotbar (0..8)
+        float hbStartY = bpSlotsY + 5 * (chSlotSz + chGap) + 6.0f;
+        ui->drawText("EQUIPPED HOTBAR", chStartX, hbStartY, 1.15f, {1.0f, 0.85f, 0.35f, 1.0f});
+
+        float hbSlotsY = hbStartY + 14.0f;
+        for (int c = 0; c < 9; ++c) {
+            int slotIdx = c;
+            float sx = chStartX + c * (chSlotSz + chGap);
+            float sy = hbSlotsY;
+
+            bool hov = (mouseX >= sx && mouseX <= sx + chSlotSz && mouseY >= sy && mouseY <= sy + chSlotSz);
+            if (hov) {
+                hoveredSlotIndex = slotIdx;
+                hoveredStack = &inv.getSlot(slotIdx);
+                if (mouseClicked || rightClicked) {
+                    selectedSlotIndex = slotIdx;
+                    if (shiftDown) {
+                        // Quick-transfer: Hotbar -> Chest!
+                        ItemStack& ps = inv.getSlot(slotIdx);
+                        if (!ps.isEmpty()) {
+                            for (auto& cs : *currentChestSlots) {
+                                if (!cs.isEmpty() && cs.id == ps.id && cs.count < cs.maxStack) {
+                                    uint32_t space = cs.maxStack - cs.count;
+                                    uint32_t toAdd = std::min(ps.count, space);
+                                    cs.count += toAdd;
+                                    ps.count -= toAdd;
+                                    if (ps.count == 0) { ps.clear(); break; }
+                                }
+                            }
+                            if (!ps.isEmpty()) {
+                                for (auto& cs : *currentChestSlots) {
+                                    if (cs.isEmpty()) {
+                                        cs = ps;
+                                        ps.clear();
+                                        break;
+                                    }
+                                }
+                            }
+                            if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                        }
+                    } else {
+                        inv.handleSlotClick(slotIdx, rightClicked, shiftDown);
+                        if (audio) audio->playSound(SoundID::ItemPickup, 1.0f, 1.0f);
+                    }
+                }
+            }
+
+            renderSlotCard(ui, sx, sy, chSlotSz, inv.getSlot(slotIdx), hov, selectedSlotIndex == slotIdx, std::to_string(c + 1), {0.2f, 0.65f, 0.95f, 0.85f});
+        }
+
+        // Right-hand Inspection Panel
+        float inspectX = panelX + 380.0f;
+        float inspectY = panelY + 48.0f;
+        float inspectW = panelW - 400.0f;
+        float inspectH = panelH - 85.0f;
+
+        ItemStack inspectItem;
+        if (hoveredStack && !hoveredStack->isEmpty()) {
+            inspectItem = *hoveredStack;
+        } else {
+            inspectItem = inv.getSlot(selectedSlotIndex);
+        }
+
+        renderInspectionPanel(ui, inspectX, inspectY, inspectW, inspectH,
+                              inspectItem, selectedSlotIndex,
+                              player, audio, mouseX, mouseY, mouseClicked);
     }
 
     // =========================================================================

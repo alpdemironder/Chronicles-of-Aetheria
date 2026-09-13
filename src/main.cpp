@@ -49,6 +49,8 @@
 #include "ui/MultiplayerUI.hpp"
 #include "ui/LoginUI.hpp"
 #include "ui/ChatUI.hpp"
+#include "ui/SkillTreeUI.hpp"
+#include "inventory/ChestManager.hpp"
 #include "network/NetworkProtocol.hpp"
 #include "network/Client.hpp"
 #include "network/Server.hpp"
@@ -174,12 +176,16 @@ int main(int argc, char* argv[]) {
     MultiplayerUI multiplayerUI(netClient.get(), &localServer);
     multiplayerUI.setPlayerName(config.account.username);
     ChatUI chatUI;
+    SkillTreeUI skillTreeUI;
 
     // Account & Profile Login Subsystem
     LoginUI loginUI;
     loginUI.setUsername(config.account.username);
     loginUI.setCharacterClass(config.account.characterClass);
+    loginUI.setRace(config.account.race);
     loginUI.setRememberMe(config.account.rememberMe);
+    player.setRace(config.account.race);
+
     if (!config.account.rememberMe || !config.account.isLoggedIn) {
         loginUI.setOpen(true);
     }
@@ -231,15 +237,17 @@ int main(int argc, char* argv[]) {
     mainMenu.setOnOpenLogin([&]() {
         loginUI.setOpen(true);
     });
-    loginUI.setOnLoginSuccess([&](const std::string& u, const std::string& cls) {
+    loginUI.setOnLoginSuccess([&](const std::string& u, const std::string& cls, const std::string& race) {
         config.account.username = u;
         config.account.characterClass = cls;
+        config.account.race = race;
         config.account.isLoggedIn = true;
         config.account.rememberMe = loginUI.getRememberMe();
         config.save();
 
         player.setName(u);
         player.setCharacterClass(cls);
+        player.setRace(race);
         multiplayerUI.setPlayerName(u);
     });
     multiplayerUI.setOnStartGame([&]() {
@@ -323,6 +331,8 @@ int main(int argc, char* argv[]) {
         if (window->isKeyPressed(VK_ESCAPE)) {
             if (loginUI.isOpen()) {
                 loginUI.setOpen(false);
+            } else if (skillTreeUI.isOpen()) {
+                skillTreeUI.setOpen(false);
             } else if (chatUI.isOpen()) {
                 chatUI.setOpen(false);
             } else if (multiplayerUI.isOpen()) {
@@ -437,8 +447,23 @@ int main(int argc, char* argv[]) {
                     }
                 }
                 if (window->isKeyPressed('K')) {
+                    skillTreeUI.toggle();
+                    if (skillTreeUI.isOpen()) {
+                        buildMenu.close();
+                        blockCatalog.close();
+                        bestiary.close();
+                        biomeCodex.close();
+                        updateCalendar.close();
+                        inventoryMenu.returnGridItemsToPlayer(player);
+                        inventoryMenu.close();
+                        buildingMgr->setBuildMode(false);
+                        buildingMgr->setDismantleMode(false);
+                    }
+                }
+                if (window->isKeyPressed('L') || window->isKeyPressed('Y')) {
                     updateCalendar.toggle();
                     if (updateCalendar.getIsOpen()) {
+                        skillTreeUI.setOpen(false);
                         buildMenu.close();
                         blockCatalog.close();
                         bestiary.close();
@@ -465,7 +490,7 @@ int main(int argc, char* argv[]) {
         }
 
         bool anyMenuOpen = (gameState == GameState::MainMenu) || loginUI.isOpen() || multiplayerUI.isOpen() || chatUI.isOpen() ||
-                           updateCalendar.getIsOpen() || irisShaderUI.isOpen() || settingsMenu.isOpen() ||
+                           skillTreeUI.isOpen() || updateCalendar.getIsOpen() || irisShaderUI.isOpen() || settingsMenu.isOpen() ||
                            inventoryMenu.getIsOpen() || buildMenu.getIsOpen() ||
                            blockCatalog.getIsOpen() || bestiary.getIsOpen() || biomeCodex.getIsOpen();
 
@@ -618,6 +643,14 @@ int main(int argc, char* argv[]) {
                     }
 
                     bestTarget->takeDamage(rawDmg, knockback, audio.get());
+
+                    // Vampire Race Passive: 20% Life Steal on hitting enemies!
+                    if (player.isVampire()) {
+                        float steal = rawDmg * 0.20f;
+                        player.heal(steal);
+                        hud.addNotification("+ " + std::to_string(static_cast<int>(steal)) + " HP (Can Calma)!", {0.95f, 0.25f, 0.65f, 1.0f});
+                    }
+
                     miningProgress = 0.0f;
                     currentMiningPos = {0, -999, 0};
                     currentMiningId = 0;
@@ -764,6 +797,17 @@ int main(int argc, char* argv[]) {
                                 }
                             }
 
+                            // If mined block is a wooden storage chest, spill all stored items into the world!
+                            if (currentMiningId == 337 || currentMiningId == 333) {
+                                auto chestItems = ChestManager::instance().extractChestContents(currentMiningPos);
+                                for (const auto& itm : chestItems) {
+                                    if (!itm.isEmpty()) {
+                                        Vec3 popVel((std::rand() % 100 - 50) * 0.04f, 3.4f + (std::rand() % 10) * 0.15f, (std::rand() % 100 - 50) * 0.04f);
+                                        droppedItems.push_back(std::make_unique<ItemEntity>(itm, bCenter, popVel));
+                                    }
+                                }
+                            }
+
                             miningProgress = 0.0f;
                             currentMiningPos = {0, -999, 0};
                             currentMiningId = 0;
@@ -791,14 +835,26 @@ int main(int argc, char* argv[]) {
                 if (buildingMgr->getIsBuilding()) {
                     buildingMgr->rotatePreview();
                 } else {
-                    // Check if clicking functional workstation block in the world!
                     RaycastResult rHit = world->raycast(aimRay, 5.5f);
+                    const PlacedStructure* hitPiece = buildingMgr->getTargetedStructure(aimRay, 5.5f);
+
                     if (rHit.hit && rHit.blockId == 331) { // Crafting Table
                         inventoryMenu.openCraftingTable();
                         audio->playSound(SoundID::BlockPlace, 1.2f, 0.9f);
                     } else if (rHit.hit && rHit.blockId == 332) { // Furnace (Ocak)
                         inventoryMenu.openFurnace();
                         audio->playSound(SoundID::BlockPlace, 0.9f, 0.9f);
+                    } else if (rHit.hit && (rHit.blockId == 337 || rHit.blockId == 333)) { // Wooden Storage Chest Block
+                        auto& chestSlots = ChestManager::instance().getOrCreateChest(rHit.hitBlockPos);
+                        inventoryMenu.openChest(rHit.hitBlockPos, &chestSlots);
+                        audio->playSound(SoundID::BlockPlace, 0.85f, 0.9f);
+                    } else if (hitPiece && hitPiece->type == StructureType::Storage_Chest) { // Palworld Structure Chest
+                        IVec3 pPos(static_cast<int>(std::floor(hitPiece->position.x)),
+                                   static_cast<int>(std::floor(hitPiece->position.y)),
+                                   static_cast<int>(std::floor(hitPiece->position.z)));
+                        auto& chestSlots = ChestManager::instance().getOrCreateChest(pPos);
+                        inventoryMenu.openChest(pPos, &chestSlots);
+                        audio->playSound(SoundID::BlockPlace, 0.85f, 0.9f);
                     } else {
                         ItemStack& held = player.getInventory().getSlot(player.getSelectedHotbarIndex());
                         if (!held.isEmpty() && (held.id == 520 || held.id == 521 || held.id == 522)) {
@@ -859,8 +915,88 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // 'Q' Key: Drop held item into the world as a 3D ItemEntity
-            if (window->isKeyPressed('Q')) {
+            // Active RPG Spells & Abilities
+            // [Q] or [G]: Fireball Spell
+            if (window->isKeyPressed('G') || (window->isKeyPressed('Q') && player.getSkillTree().hasSkill(SkillId::Fireball) && !window->isKeyDown(VK_SHIFT))) {
+                if (player.getSkillTree().hasSkill(SkillId::Fireball)) {
+                    if (player.getMana() < 25.0f) {
+                        hud.addNotification("Yetersiz Mana! (25 Mana Gerekli)", {1.0f, 0.35f, 0.35f, 1.0f});
+                    } else {
+                        player.spendMana(25.0f);
+                        player.triggerAttack();
+                        if (audio) {
+                            audio->playSound(SoundID::SwordSwing, 0.65f, 1.3f);
+                            audio->playSound(SoundID::BlockBreak, 0.75f, 1.2f);
+                        }
+
+                        RaycastResult fHit = world->raycast(aimRay, 32.0f);
+                        Vec3 impactPoint = fHit.hit ?
+                            Vec3(fHit.hitBlockPos.x + 0.5f, fHit.hitBlockPos.y + 0.5f, fHit.hitBlockPos.z + 0.5f) :
+                            (camera.getRenderPosition() + camera.getForward() * 28.0f);
+                        float fbDmg = 45.0f * player.getSkillTree().getDamageMultiplier();
+                        if (player.isElf()) fbDmg *= 1.20f;
+                        if (player.isDemon()) fbDmg += 8.0f;
+
+                        int hitCount = 0;
+                        for (auto& c : creatures) {
+                            if (!c->getIsDead() && !c->getIsTamed()) {
+                                float dist = (c->getPosition() - impactPoint).length();
+                                if (dist <= 5.5f) {
+                                    Vec3 kb = (c->getPosition() - impactPoint).normalized() * 5.0f + Vec3(0, 3.5f, 0);
+                                    c->takeDamage(fbDmg * (1.0f - dist / 7.0f), kb, audio.get());
+                                    hitCount++;
+                                }
+                            }
+                        }
+                        hud.addNotification("ALEV TOPU! " + std::to_string(hitCount) + " dusmana isabet etti!", {1.0f, 0.5f, 0.15f, 1.0f});
+                    }
+                }
+            }
+
+            // [Z]: Frost Nova Spell
+            if (window->isKeyPressed('Z')) {
+                if (player.getSkillTree().hasSkill(SkillId::FrostNova)) {
+                    if (player.getMana() < 30.0f) {
+                        hud.addNotification("Yetersiz Mana! (30 Mana Gerekli)", {1.0f, 0.35f, 0.35f, 1.0f});
+                    } else {
+                        player.spendMana(30.0f);
+                        if (audio) audio->playSound(SoundID::BlockBreak, 1.4f, 1.8f);
+
+                        float fnDmg = 30.0f * player.getSkillTree().getDamageMultiplier();
+                        if (player.isElf()) fnDmg *= 1.25f;
+
+                        int frozenCount = 0;
+                        for (auto& c : creatures) {
+                            if (!c->getIsDead() && !c->getIsTamed()) {
+                                float dist = (c->getPosition() - player.getPosition()).length();
+                                if (dist <= 8.5f) {
+                                    Vec3 kb = (c->getPosition() - player.getPosition()).normalized() * 3.5f + Vec3(0, 1.5f, 0);
+                                    c->takeDamage(fnDmg, kb, audio.get());
+                                    frozenCount++;
+                                }
+                            }
+                        }
+                        hud.addNotification("BUZ FIRTINASI! " + std::to_string(frozenCount) + " canavar donduruldu!", {0.3f, 0.9f, 1.0f, 1.0f});
+                    }
+                }
+            }
+
+            // [H]: Holy Heal Spell
+            if (window->isKeyPressed('H')) {
+                if (player.getSkillTree().hasSkill(SkillId::HolyHeal)) {
+                    if (player.getMana() < 40.0f) {
+                        hud.addNotification("Yetersiz Mana! (40 Mana Gerekli)", {1.0f, 0.35f, 0.35f, 1.0f});
+                    } else {
+                        player.spendMana(40.0f);
+                        player.heal(40.0f);
+                        if (audio) audio->playSound(SoundID::LevelUp, 1.35f, 1.1f);
+                        hud.addNotification("KUTSAL SIFA! +40 HP Yenilendi!", {1.0f, 0.9f, 0.35f, 1.0f});
+                    }
+                }
+            }
+
+            // 'Q' Key (or Shift+Q): Drop held item into the world as a 3D ItemEntity
+            if (window->isKeyPressed('Q') && (!player.getSkillTree().hasSkill(SkillId::Fireball) || window->isKeyDown(VK_SHIFT))) {
                 ItemStack& held = player.getInventory().getSlot(player.getSelectedHotbarIndex());
                 if (!held.isEmpty()) {
                     Vec3 dropPos = player.getPosition() + Vec3(0, 1.2f, 0) + camera.getForward() * 0.7f;
@@ -1413,6 +1549,11 @@ int main(int argc, char* argv[]) {
         // Render Update Calendar & Development Roadmap Menu
         if (updateCalendar.getIsOpen()) {
             updateCalendar.render(window->getWidth(), window->getHeight(), mx, my, mDown, mClicked, totalTime);
+        }
+
+        // Render Skill Tree & RPG Abilities Menu
+        if (skillTreeUI.isOpen()) {
+            skillTreeUI.render(uiRenderer.get(), window->getWidth(), window->getHeight(), player, audio.get(), mx, my, mClicked, totalTime);
         }
 
         // Render Account Login & Profile Modal on topmost UI layer

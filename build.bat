@@ -59,6 +59,7 @@ src\ui\UpdateCalendarUI.cpp ^
 src\ui\MainMenuUI.cpp ^
 src\ui\MultiplayerUI.cpp ^
 src\ui\LoginUI.cpp ^
+src\ui\SkillTreeUI.cpp ^
 src\ui\ChatUI.cpp
 
 "%GXX%" -std=c++17 -O2 -I src %SRCS% -o bin\AetheriaRPG.exe -lopengl32 -lgdi32 -luser32 -lwinmm -lshell32 -lws2_32

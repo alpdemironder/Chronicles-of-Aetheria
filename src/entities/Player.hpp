@@ -4,6 +4,7 @@
 #include "../core/Camera.hpp"
 #include "../inventory/Inventory.hpp"
 #include "../inventory/ItemRegistry.hpp"
+#include "../skills/SkillTree.hpp"
 #include <cstdint>
 
 namespace Aetheria {
@@ -42,15 +43,37 @@ public:
     float getMaxHealth() const { return maxHealth; }
     float getMana() const { return mana; }
     float getMaxMana() const { return maxMana; }
+    void spendMana(float amt) { mana = std::max(0.0f, mana - amt); }
+    void addMana(float amt) { mana = std::min(maxMana, mana + amt); }
     float getStamina() const { return stamina; }
     float getMaxStamina() const { return maxStamina; }
+    void spendStamina(float amt) { stamina = std::max(0.0f, stamina - amt); }
     float getAttackPower() const;
-    float getDefense() const { return inventory.getTotalDefense(); }
+    float getDefense() const { return inventory.getTotalDefense() + skillTree.getBonusDefense(); }
 
     const std::string& getName() const { return name; }
     void setName(const std::string& n) { name = n; }
     const std::string& getCharacterClass() const { return characterClass; }
     void setCharacterClass(const std::string& cls) { characterClass = cls; }
+
+    const std::string& getRace() const { return race; }
+    void setRace(const std::string& r) { race = r; }
+
+    uint32_t getSkillPoints() const { return skillPoints; }
+    void setSkillPoints(uint32_t sp) { skillPoints = sp; }
+    void addSkillPoints(uint32_t sp) { skillPoints += sp; }
+
+    SkillTree& getSkillTree() { return skillTree; }
+    const SkillTree& getSkillTree() const { return skillTree; }
+
+    bool getCanDoubleJump() const { return canDoubleJump; }
+    void setCanDoubleJump(bool cdj) { canDoubleJump = cdj; }
+
+    bool isHuman() const { return race == "Insan" || race == "İnsan" || race == "Human"; }
+    bool isElf() const { return race == "Elf"; }
+    bool isDemon() const { return race == "Iblis" || race == "İblis" || race == "Demon"; }
+    bool isVampire() const { return race == "Vampir" || race == "Vampire"; }
+    bool isSlime() const { return race == "Slime"; }
 
     int getSelectedHotbarIndex() const { return selectedHotbarIndex; }
     void setSelectedHotbarIndex(int idx);
@@ -82,6 +105,10 @@ private:
 
     std::string name = "Alp";
     std::string characterClass = "Savasci";
+    std::string race = "Insan";
+    uint32_t skillPoints = 0;
+    SkillTree skillTree;
+    bool canDoubleJump = true;
 
     float health = 100.0f;
     float maxHealth = 100.0f;

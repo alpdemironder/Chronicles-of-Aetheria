@@ -36,6 +36,7 @@ void Settings::resetDefaults() {
 
     account.username = "Alp";
     account.characterClass = "Savasci";
+    account.race = "Insan";
     account.rememberMe = true;
     account.isLoggedIn = false;
 }
@@ -64,6 +65,7 @@ void Settings::load() {
         else if (key == "thirdPerson") file >> gameplay.thirdPerson;
         else if (key == "username") file >> account.username;
         else if (key == "characterClass") file >> account.characterClass;
+        else if (key == "race") file >> account.race;
         else if (key == "rememberMe") { int val = 1; file >> val; account.rememberMe = (val != 0); }
         else if (key == "isLoggedIn") { int val = 0; file >> val; account.isLoggedIn = (val != 0); }
     }
@@ -90,6 +92,7 @@ void Settings::save() {
     file << "thirdPerson " << gameplay.thirdPerson << "\n";
     file << "username " << account.username << "\n";
     file << "characterClass " << account.characterClass << "\n";
+    file << "race " << account.race << "\n";
     file << "rememberMe " << (account.rememberMe ? 1 : 0) << "\n";
     file << "isLoggedIn " << (account.isLoggedIn ? 1 : 0) << "\n";
 }

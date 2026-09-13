@@ -290,17 +290,19 @@ void CraftingRegistry::init() {
         registerGridRecipe(gr);
     }
 
-    // 8 Planks -> 1 Storage Chest (333)
-    {
+    // 8 Planks -> 1 Storage Chest (337) across all 16 wood species!
+    uint16_t allWoodPlanks[] = { 72, 75, 78, 81, 84, 87, 89, 92, 95, 98, 101, 104, 107, 110, 113, 116 };
+    for (size_t p = 0; p < 16; ++p) {
         GridRecipe gr;
-        gr.id = 301;
+        gr.id = 301 + static_cast<uint32_t>(p);
         gr.name = "Chest";
         gr.patternW = 3;
         gr.patternH = 3;
-        gr.pattern = { 72, 72, 72,
-                       72,  0, 72,
-                       72, 72, 72 };
-        gr.result = { 333, 1, 64 };
+        uint16_t pl = allWoodPlanks[p];
+        gr.pattern = { pl, pl, pl,
+                       pl,  0, pl,
+                       pl, pl, pl };
+        gr.result = { 337, 1, 64 };
         registerGridRecipe(gr);
     }
 
@@ -509,7 +511,7 @@ void CraftingRegistry::init() {
     registerRecipe({ 3, "Torches", "Survival", { 551, 4, 64 }, { { 552, 1 }, { 550, 1 } }, "4 bright Torches." });
     registerRecipe({ 4, "Crafting Table", "Survival", { 331, 1, 64 }, { { 72, 4 } }, "Workstation for 3x3 recipes." });
     registerRecipe({ 5, "Furnace", "Survival", { 332, 1, 64 }, { { 37, 8 } }, "Smelts ores into ingots and cooks meat." });
-    registerRecipe({ 6, "Chest", "Survival", { 333, 1, 64 }, { { 72, 8 } }, "Storage chest for items." });
+    registerRecipe({ 6, "Chest", "Survival", { 337, 1, 64 }, { { 72, 8 } }, "Storage chest for items." });
     registerRecipe({ 7, "Iron Broadsword", "Weapons", { 513, 1, 1 }, { { 501, 2 }, { 550, 1 } }, "Keen steel sword [Attack: 38]." });
     registerRecipe({ 8, "Iron Pickaxe", "Tools", { 514, 1, 1 }, { { 501, 3 }, { 550, 2 } }, "Steel pickaxe [Attack: 24]." });
     registerRecipe({ 9, "Iron Chestplate", "Armor", { 535, 1, 1 }, { { 501, 8 } }, "Solid breastplate [Defense: +6]." });

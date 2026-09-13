@@ -128,14 +128,18 @@ The executable will be built directly to `bin\AetheriaRPG.exe`.
 | Key | Action |
 |-----|--------|
 | **W, A, S, D** | Move / Strafe |
-| **Space** | Jump / Swim upward |
+| **Space** | Jump / Swim upward / **Double Jump (Havada İkinci Zıplama)** |
 | **Left Shift** | Sprint |
 | **Left Ctrl** | Sneak |
 | **R** | Dash / Rotate building piece |
 | **C** | Telescopic Zoom (3.1x) |
 | **Left Click** | Attack / Mine Voxel |
-| **Right Click** | Throw Pal Sphere / Place Block / Use Consumable |
+| **Right Click** | Open Chest / Throw Pal Sphere / Place Block / Use Consumable |
 | **E / Tab / I** | Open Inventory & Crafting Table |
+| **K** | **Yetenek & Büyü Ağacı (Skill Tree & SP)** |
+| **Q / G** | **Alev Topu Büyüsü (Fireball Spell)** / Shift+Q Drop Item |
+| **Z** | **Buz Fırtınası Büyüsü (Frost Nova Spell)** |
+| **H** | **Kutsal Şifa Büyüsü (Holy Heal Spell)** |
 | **V** | Cycle Companion Stance (`Follow` -> `Stay` -> `Work`) |
 | **F** | Hammer Blueprint Scaffold |
 | **B** | Palworld Building Menu |
@@ -143,6 +147,53 @@ The executable will be built directly to `bin\AetheriaRPG.exe`.
 | **X** | Dismantle Mode |
 | **O** | Iris Shaderpack Menu |
 | **Esc** | Pause / Settings Menu |
+
+---
+
+## 🔮 Yetenek Ağacı & Büyüler (Skill Tree & Active Spells)
+
+Her seviye atlandığında kazanılan **Yetenek Puanları (SP - Skill Points)** ile harcanabilir aktif büyüler ve pasif güçlendirmeler (`[K]` Tuşu):
+- **Çift Zıplama (Double Jump)**: Havada `[SPACE]` tuşuna basarak ikinci kez havada zıplama yeteneği (15 Stamina).
+- **Alev Topu (Fireball - `[Q]` / `[G]`)**: Hedefe doğru patlayıcı alev topu fırlatır (45 Alan Hasarı + Düşmanları Geri İtme, 25 Mana).
+- **Buz Fırtınası (Frost Nova - `[Z]`)**: Çevredeki 8.5 blok içindeki tüm canavarları dondurur ve yavaşlatır (30 Büyü Hasarı, 30 Mana).
+- **Kutsal Şifa (Holy Heal - `[H]`)**: Kutsal ışık enerjisiyle anında +40 HP can yeniler (40 Mana).
+- **Pasif Yetenekler**:
+  - **Çelik Deri (Iron Skin)**: Seviye başına +4 Zırh/Defans kazandırır.
+  - **Hızlı İyileşme (Regeneration)**: Her 2 saniyede bir pasif olarak +1.5 Can yeniler.
+  - **Mana Akışı (Mana Surge)**: +30 Max Mana ve +40% Mana dolum hızı artışı.
+  - **Rüzgar Adımları (Swiftness)**: +15% Koşu ve depar hareket hızı artışı.
+  - **Savaş Öfkesi (Berserker)**: Seviye başına +12% Silah ve büyü saldırı hasarı artışı.
+
+---
+
+## 🧝 Karakter Irkları & Özel Pasifler (RPG Playable Races)
+
+Karakter giriş ekranında seçilebilen 5 benzersiz RPG ırkı ve oynanış özellikleri:
+1. **İnsan (Human)**:
+   - *Dengeli Uyum*: Her seviye atlandığında diğer ırklardan farklı olarak **+2 Yetenek Puanı (SP)** kazanır.
+2. **Elf**:
+   - *Kadim Büyücü*: **+50% Daha Hızlı Mana Yenilenmesi**, +20 Max Mana ve büyü/ok saldırılarında ekstra güç.
+3. **İblis (Demon)**:
+   - *Cehennem Ateşi*: **Lav ve Ateş Bağışıklığı (%100 Lava & Fire Immunity)**! Lavda yürüyebilir, yüzebilir ve yanmaz. +8 Karanlık Ateş hasarı.
+4. **Vampir (Vampire)**:
+   - *Gece Avcısı*: **%20 Can Çalma (Life Steal)**! Düşmanlara ve canavarlara vurulan her darbenin %20'si anında oyuncuya can (HP) olarak geri döner.
+5. **Slime**:
+   - *Elastik Gövde*: **Düşme Hasarı Almaz (No Fall Damage)**! Yere yüksekten çarpınca elastik zıplama fiziği (Bounce) ve +25% Zıplama yüksekliği.
+
+---
+
+## 📦 Ahşap Sandık & Konteyner Arayüzü (Wooden Storage Chests)
+
+- **3x3 Çalışma Masası Reçetesi**: Herhangi 8 adet ahşap tahta ile ortası boş çerçeve şeklinde dizilerek üretilir (Block ID 337 / 333). Hızlı üretim menüsünde de yer alır.
+- **27 Slotlu Konteyner Depolama GUI'si**:
+  - Dünyaya yerleştirilen sandığa (veya Palworld `Storage_Chest` yapısına) sağ tıklandığında 27 slotluk depolama arayüzü açılır.
+  - **Shift + Sol Tık (Hızlı Transfer)**: Sandık ile çanta arasında eşyaları tek tıkla aktarır.
+  - **Sağ Tık**: Eşya destesini ikiye böler veya tek tek yerleştirir.
+  - **Hızlı Butonlar**:
+    - `[HEPSİNİ AL]`: Sandıktaki tüm eşyaları oyuncunun çantasına aktarır.
+    - `[HEPSİNİ KOY]`: Oyuncunun çantasındaki eşyaları sandığa depolar.
+    - `[HIZLI YIĞ]`: Sandıkta bulunan eşyaları çantanızdan otomatik olarak birleştirir ve istifler.
+- **Kırılınca Eşyaları Düşürme**: Sandık kırıldığında veya kazıldığında içindeki tüm eşyalar fiziksel 3D eşya olarak dünyaya saçılır.
 
 ---
 

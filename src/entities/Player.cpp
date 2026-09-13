@@ -72,10 +72,17 @@ float Player::getAttackPower() const {
     }
     float base = weaponDmg + static_cast<float>(level - 1) * 2.0f;
 
+    // Racial bonuses
+    if (isDemon()) base += 4.0f;
+    if (isElf()) base += 2.0f;
+
     // Minecraft 1.9+ Attack Charge Damage Scaling:
-    // damage = base * (0.2 + 0.8 * (charge ^ 2))
     float charge = getAttackRechargeProgress();
     float damageMultiplier = 0.20f + 0.80f * (charge * charge);
+
+    // Skill Tree Berserker passive
+    damageMultiplier *= skillTree.getDamageMultiplier();
+
     return base * damageMultiplier;
 }
 
@@ -232,12 +239,14 @@ void Player::handleInput(const Window& window, Camera& camera, AudioEngine* audi
     // Movement speed calculation
     float speed;
     if (inLava) {
-        speed = 1.8f;
+        speed = isDemon() ? 3.6f : 1.8f;
     } else if (inWater) {
         speed = isSprinting ? 6.0f : 3.6f;
     } else {
         speed = isCrouching ? 2.4f : (isSprinting ? 8.8f : 5.0f);
+        if (isElf()) speed *= 1.10f;
     }
+    speed *= skillTree.getSpeedMultiplier();
 
     // Horizontal acceleration & Dash momentum
     if (dashTimer > 0.0f) {
@@ -262,13 +271,28 @@ void Player::handleInput(const Window& window, Camera& camera, AudioEngine* audi
     } else if (inLava) {
         // Thick viscous paddling in molten magma
         if (window.isKeyDown(VK_SPACE)) {
-            velocity.y = std::min(velocity.y + 9.0f * dt, 2.5f);
+            velocity.y = std::min(velocity.y + (isDemon() ? 14.0f : 9.0f) * dt, isDemon() ? 4.2f : 2.5f);
         }
     } else {
-        // Normal ground jump
-        if (window.isKeyDown(VK_SPACE) && onGround) {
+        // Normal ground jump & Double Jump mechanics
+        if (window.isKeyPressed(VK_SPACE)) {
+            if (onGround) {
+                velocity.y = isCrouching ? 6.5f : (isSprinting ? 9.6f : 9.2f);
+                if (isSlime()) velocity.y *= 1.25f; // Slime bouncy jump
+                onGround = false;
+                canDoubleJump = true;
+            } else if (canDoubleJump && skillTree.hasSkill(SkillId::DoubleJump) && stamina >= 15.0f) {
+                // Mid-air Double Jump!
+                velocity.y = 8.8f;
+                canDoubleJump = false;
+                stamina = std::max(0.0f, stamina - 15.0f);
+                if (audio) audio->playSound(SoundID::LevelUp, 1.6f, 0.6f);
+            }
+        } else if (window.isKeyDown(VK_SPACE) && onGround) {
             velocity.y = isCrouching ? 6.5f : (isSprinting ? 9.6f : 9.2f);
+            if (isSlime()) velocity.y *= 1.25f;
             onGround = false;
+            canDoubleJump = true;
         }
     }
 }
@@ -316,10 +340,14 @@ void Player::update(World* world, AudioEngine* audio, float dt) {
         velocity *= drag;
 
         // Lava thermal damage
-        lavaBurnTimer += dt;
-        if (lavaBurnTimer >= 0.45f) {
-            lavaBurnTimer = 0.0f;
-            takeDamage(12.0f, audio);
+        if (isDemon()) {
+            lavaBurnTimer = 0.0f; // Demon is completely immune to lava burns
+        } else {
+            lavaBurnTimer += dt;
+            if (lavaBurnTimer >= 0.45f) {
+                lavaBurnTimer = 0.0f;
+                takeDamage(12.0f, audio);
+            }
         }
     } else {
         hasGravity = true;
@@ -327,6 +355,23 @@ void Player::update(World* world, AudioEngine* audio, float dt) {
     }
 
     Entity::update(world, dt);
+
+    if (onGround) {
+        canDoubleJump = true;
+    }
+
+    // Passive health regeneration from Skill Tree
+    float hpRegen = skillTree.getHealthRegenPerSecond();
+    if (hpRegen > 0.0f && health < maxHealth) {
+        health = std::min(maxHealth, health + hpRegen * dt);
+    }
+
+    // Mana regeneration
+    float manaRegenRate = 4.0f * skillTree.getManaRegenMultiplier();
+    if (isElf()) manaRegenRate *= 1.50f; // Elf mana affinity
+    if (mana < maxMana) {
+        mana = std::min(maxMana, mana + manaRegenRate * dt);
+    }
 
     if (attackSwingTimer > 0.0f) {
         attackSwingTimer -= dt;
@@ -361,6 +406,11 @@ void Player::takeDamage(float amount, AudioEngine* audio) {
         return;
     }
 
+    // Slime rubbery body absorbs 50% physical impact & fall damage
+    if (isSlime()) {
+        amount *= 0.50f;
+    }
+
     float def = getDefense();
     float reduction = std::min(0.80f, def * 0.035f);
     float actualDmg = amount * (1.0f - reduction);
@@ -385,6 +435,10 @@ void Player::gainXP(uint32_t amount, AudioEngine* audio) {
         stamina = maxStamina;
         baseAttackPower += 4.0f;
 
+        // Award Skill Points (Human gains 2, others gain 1)
+        uint32_t spAward = isHuman() ? 2 : 1;
+        skillPoints += spAward;
+
         // Level-based inventory expansion (+3 slots unlocked per level up!)
         uint32_t newUnlocked = std::min(static_cast<uint32_t>(Inventory::MAIN_AND_HOTBAR), 18u + (level - 1) * 3u);
         inventory.setUnlockedSlotCount(newUnlocked);
@@ -393,7 +447,8 @@ void Player::gainXP(uint32_t amount, AudioEngine* audio) {
             audio->playSound(SoundID::LevelUp, 1.0f, 1.0f);
         }
         std::cout << "LEVEL UP! Player is now Level " << level << "! Max Stamina: " << maxStamina 
-                  << " | Unlocked Storage Slots: " << newUnlocked << "!" << std::endl;
+                  << " | Unlocked Storage Slots: " << newUnlocked 
+                  << " | Awarded SP: +" << spAward << " (Total SP: " << skillPoints << ")!" << std::endl;
     }
 }
 

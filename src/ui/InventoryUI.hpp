@@ -2,6 +2,7 @@
 
 #include "UIRenderer.hpp"
 #include "../entities/Player.hpp"
+#include "../core/Math.hpp"
 #include "../inventory/CraftingRegistry.hpp"
 #include "../inventory/FurnaceManager.hpp"
 #include <string>
@@ -16,7 +17,8 @@ enum class InventoryUIMode {
     Backpack,   // Grounded 2 Style: 4 Armor + Backpack (27) + Hotbar (9) + Inspection & Action Deck
     Crafting,   // Grounded 2 Style: Categorized Recipe Deck + 3x3 Workbench Grid
     Furnace,    // Grounded 2 Style: Industrial Smelting Processor with Temperature Gauges
-    Vitals      // Grounded 2 Style: SCA.B OS Character & Combat Vitals Overview
+    Vitals,     // Grounded 2 Style: SCA.B OS Character & Combat Vitals Overview
+    Chest       // Wooden Storage Chest Container (27 slots) + Player Inventory
 };
 
 class InventoryUI {
@@ -48,8 +50,16 @@ public:
         mode = InventoryUIMode::Furnace;
     }
 
+    void openChest(const IVec3& pos, std::vector<ItemStack>* chestSlots) {
+        isOpen = true;
+        mode = InventoryUIMode::Chest;
+        activeChestPos = pos;
+        currentChestSlots = chestSlots;
+    }
+
     void close() {
         isOpen = false;
+        currentChestSlots = nullptr;
     }
 
     bool getIsOpen() const { return isOpen; }
@@ -89,6 +99,10 @@ private:
 
     // Furnace Smelting state
     FurnaceManager furnace;
+
+    // Active Chest Storage Container
+    IVec3 activeChestPos{0, 0, 0};
+    std::vector<ItemStack>* currentChestSlots = nullptr;
 
     // Pending dropped items queue
     std::vector<ItemStack> pendingDrops;

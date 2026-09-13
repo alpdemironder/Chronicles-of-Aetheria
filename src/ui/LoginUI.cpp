@@ -6,10 +6,10 @@
 namespace Aetheria {
 
 LoginUI::LoginUI() {
-    savedProfiles.push_back({"Alp", "Savasci", 12});
-    savedProfiles.push_back({"DemirBilek", "Paladin", 8});
-    savedProfiles.push_back({"GolgeAvcisi", "Okcu", 15});
-    savedProfiles.push_back({"AuraMage", "Buyucu", 20});
+    savedProfiles.push_back({"Alp", "Savasci", "Insan", 12});
+    savedProfiles.push_back({"DemirBilek", "Paladin", "Iblis", 8});
+    savedProfiles.push_back({"GolgeAvcisi", "Okcu", "Elf", 15});
+    savedProfiles.push_back({"AuraMage", "Buyucu", "Vampir", 20});
 }
 
 void LoginUI::generateRandomName() {
@@ -35,7 +35,7 @@ void LoginUI::tryLogin() {
     statusColor = {0.35f, 1.0f, 0.45f, 1.0f};
 
     if (onLoginSuccess) {
-        onLoginSuccess(username, selectedClass);
+        onLoginSuccess(username, selectedClass, selectedRace);
     }
     open = false;
 }
@@ -125,6 +125,29 @@ bool LoginUI::drawClassCard(UIRenderer* ui, float x, float y, float w, float h,
     return hovered && clicked;
 }
 
+bool LoginUI::drawRaceCard(UIRenderer* ui, float x, float y, float w, float h,
+                           const std::string& raceName, const std::string& roleDesc,
+                           const std::string& perks, bool isSelected,
+                           int mouseX, int mouseY, bool clicked) {
+    bool hovered = (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h);
+
+    Vec4 bg = isSelected ? Vec4(0.18f, 0.36f, 0.28f, 0.95f) :
+              (hovered ? Vec4(0.10f, 0.22f, 0.20f, 0.88f) : Vec4(0.05f, 0.10f, 0.12f, 0.82f));
+
+    Vec4 border = isSelected ? Vec4(0.35f, 0.95f, 0.45f, 1.0f) :
+                  (hovered ? Vec4(0.40f, 0.85f, 0.70f, 0.85f) : Vec4(0.20f, 0.35f, 0.38f, 0.60f));
+
+    ui->drawRect(x, y, w, h, bg);
+    ui->drawRectOutline(x, y, w, h, isSelected ? 2.0f : 1.0f, border);
+
+    Vec4 titleCol = isSelected ? Vec4(0.45f, 1.0f, 0.55f, 1.0f) : Vec4(0.95f, 0.95f, 0.95f, 1.0f);
+    ui->drawTextCentered(raceName, x + w * 0.5f, y + 6.0f, 1.35f, titleCol);
+    ui->drawTextCentered(roleDesc, x + w * 0.5f, y + 22.0f, 1.02f, {0.70f, 0.90f, 0.85f, 0.85f});
+    ui->drawTextCentered(perks, x + w * 0.5f, y + 36.0f, 0.95f, isSelected ? Vec4(1.0f, 0.90f, 0.35f, 1.0f) : Vec4(0.60f, 0.80f, 0.75f, 0.75f));
+
+    return hovered && clicked;
+}
+
 void LoginUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
                      int mouseX, int mouseY, bool mouseLeftDown, bool mouseLeftClicked,
                      float totalTime) {
@@ -139,8 +162,8 @@ void LoginUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
     ui->drawRect(0, 0, sw, sh, {0.02f, 0.03f, 0.06f, 0.75f});
 
     // 2. Main Login Modal Dimensions
-    float panelW = 620.0f;
-    float panelH = 500.0f;
+    float panelW = 720.0f;
+    float panelH = 580.0f;
     float panelX = cx - panelW * 0.5f;
     float panelY = cy - panelH * 0.5f;
 
@@ -244,9 +267,49 @@ void LoginUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
     }
 
     // =========================================================================
+    // SECTION 2.5: IRK SECIMI (RACE SELECTION)
+    // =========================================================================
+    float sec25Y = cardY + cardH + 12.0f;
+    ui->drawText("KARAKTER IRKI & PASIFLERI:", panelX + 30.0f, sec25Y, 1.35f, {0.85f, 0.92f, 1.0f, 1.0f});
+
+    float rCardW = (panelW - 60.0f - 4 * 8.0f) / 5.0f;
+    float rCardH = 52.0f;
+    float rCardY = sec25Y + 18.0f;
+
+    if (drawRaceCard(ui, panelX + 30.0f + 0 * (rCardW + 8.0f), rCardY, rCardW, rCardH,
+                     "INSAN", "Human", "+2 Yetenek/Lvl", selectedRace == "Insan",
+                     mouseX, mouseY, mouseLeftClicked)) {
+        selectedRace = "Insan";
+    }
+
+    if (drawRaceCard(ui, panelX + 30.0f + 1 * (rCardW + 8.0f), rCardY, rCardW, rCardH,
+                     "ELF", "Elf", "+50% Mana Hizi", selectedRace == "Elf",
+                     mouseX, mouseY, mouseLeftClicked)) {
+        selectedRace = "Elf";
+    }
+
+    if (drawRaceCard(ui, panelX + 30.0f + 2 * (rCardW + 8.0f), rCardY, rCardW, rCardH,
+                     "IBLIS", "Demon", "Lav Bagisikligi", selectedRace == "Iblis",
+                     mouseX, mouseY, mouseLeftClicked)) {
+        selectedRace = "Iblis";
+    }
+
+    if (drawRaceCard(ui, panelX + 30.0f + 3 * (rCardW + 8.0f), rCardY, rCardW, rCardH,
+                     "VAMPIR", "Vampire", "%20 Can Calma", selectedRace == "Vampir",
+                     mouseX, mouseY, mouseLeftClicked)) {
+        selectedRace = "Vampir";
+    }
+
+    if (drawRaceCard(ui, panelX + 30.0f + 4 * (rCardW + 8.0f), rCardY, rCardW, rCardH,
+                     "SLIME", "Slime", "Dusme Hasarsiz", selectedRace == "Slime",
+                     mouseX, mouseY, mouseLeftClicked)) {
+        selectedRace = "Slime";
+    }
+
+    // =========================================================================
     // SECTION 3: KAYITLI HESAPLAR / HIZLI PROFIL GECISI
     // =========================================================================
-    float sec3Y = cardY + cardH + 16.0f;
+    float sec3Y = rCardY + rCardH + 12.0f;
     ui->drawText("KAYITLI PROFILLER (HIZLI SECIM):", panelX + 30.0f, sec3Y, 1.25f, {0.80f, 0.88f, 0.95f, 0.9f});
 
     float chipW = 132.0f;
@@ -262,7 +325,8 @@ void LoginUI::render(UIRenderer* ui, int screenWidth, int screenHeight,
         if (drawButton(ui, chipX, chipY, chipW, chipH, label, isCurrent, mouseX, mouseY, mouseLeftClicked)) {
             username = savedProfiles[i].name;
             selectedClass = savedProfiles[i].characterClass;
-            statusMessage = "Profil secildi: " + username + " (" + selectedClass + ")";
+            selectedRace = savedProfiles[i].race;
+            statusMessage = "Profil secildi: " + username + " (" + selectedClass + " / " + selectedRace + ")";
             statusColor = {0.35f, 0.95f, 0.45f, 1.0f};
         }
     }

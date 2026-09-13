@@ -38,6 +38,7 @@ struct GameplaySettings {
 struct AccountSettings {
     std::string username = "Alp";
     std::string characterClass = "Savasci";
+    std::string race = "Insan";
     bool rememberMe = true;
     bool isLoggedIn = false;
 };

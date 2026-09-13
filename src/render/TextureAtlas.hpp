@@ -116,6 +116,10 @@ inline uint16_t getBlockFaceTexture(uint16_t blockId, int faceIndex) {
             if (faceIndex == 0) return TEX_LAYER_FURNACE_TOP;
             if (faceIndex == 2 || faceIndex == 3) return 332; // Front arch
             return 37; // Cobblestone sides
+        case 337: // Wooden Storage Chest
+        case 333:
+            if (faceIndex == 0 || faceIndex == 1) return 72; // Planks top and bottom
+            return TEX_LAYER_CHEST; // Authentic chest side & latch texture
         case 347: // Bookshelf
             if (faceIndex == 0 || faceIndex == 1) return 72; // Planks top/bottom
             return 347; // Bookshelf side
